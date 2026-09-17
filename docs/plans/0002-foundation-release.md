@@ -1,7 +1,7 @@
 # Plan 0002 — Foundation release (minimal extension + CI/CD to Chrome Web Store)
 
 - Date: 2026-09-17
-- Status: in progress (steps 1–3)
+- Status: steps 1–3 done (v0.1.0 released 2026-09-17). Steps 4–5 pending the manual store setup.
 - Supersedes: the ordering in plan 0001 (M0 now follows this plan)
 
 ## Context
@@ -62,3 +62,14 @@ See `docs/RELEASING.md`.
 - `wxt submit` v2 support: confirmed in the CLI (`--chrome-api-version v2`, `CHROME_PUBLISHER_ID`, service-account env vars). The first run is the manual `store-dry-run.yml`.
 - ~~OAuth refresh-token expiry~~ Resolved: `wxt submit` (publish-extension 6.1.1) uses a service account for API v2, so there is no refresh token (DECISIONS 0006).
 - Store versions must strictly increase. Never upload manually outside the pipeline after v0.1.0.
+
+## Progress log
+
+- 2026-09-17: PR #1 merged (scaffold + CI/CD). PR #3 fixed a format check on the generated release manifest.
+  Release PR #2 merged → `v0.1.0` tag, zip attached to the GitHub release, publish job skipped (no store secrets yet).
+- Lessons:
+  - `actions/upload-artifact` skips dot-directories unless `include-hidden-files: true` (`.output/`).
+  - release-please needs Issues: write in addition to Contents and Pull requests.
+  - release-please does not refresh its PR for commits that don't change the changelog (`ci:`, `chore:`).
+    If such a commit fixes the release PR's CI, update the PR branch from `main` ("Update branch" button).
+  - Repo kept private: no enforced rulesets and no GitHub Pages on the free plan (DECISIONS 0009).
