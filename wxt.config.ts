@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'wxt';
 
 // Manifest is generated here. Every permission added must also get a
-// justification in docs/RELEASING.md (store Privacy tab) and SPEC §11.
+// justification in docs/store/listing.md, PRIVACY.md, and SPEC §11.
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   // Explicit imports only: easier to read and grep than auto-imports.

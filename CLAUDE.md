@@ -8,7 +8,7 @@ GitSync is a Chrome MV3 extension that does one thing: sync branches between Git
 
 ## Status
 
-M-1 foundation release in progress (`docs/plans/0002-foundation-release.md`): placeholder side panel plus the CI/CD pipeline to the Chrome Web Store. `spike/` holds the M0 experiment, parked. It is excluded from root lint/typecheck/CI.
+M-1 foundation release: v0.1.0 in store review (`docs/plans/0002-foundation-release.md`). Roadmap to 1.0.0 and release steps: `docs/plans/0004-roadmap-to-stable.md`, tracked as GitHub milestones/issues. `spike/` holds the M0 experiment, parked. It is excluded from root lint/typecheck/CI.
 
 ## Docs
 
@@ -27,7 +27,7 @@ Every plan or design gets a Markdown file: plans in `docs/plans/NNNN-slug.md`, a
 - Import explicitly (`wxt/browser`, `wxt/utils/define-background`). WXT auto-imports are off. `@/` is the repo root.
 - Tests use `fakeBrowser` from `wxt/testing/fake-browser`. Unmocked APIs (e.g. `sidePanel`) need `vi.spyOn`.
 - PR titles are conventional commits (squash merge). release-please owns the version: never edit it by hand. See `docs/RELEASING.md`.
-- Adding a manifest permission means also updating its justification in `docs/RELEASING.md` and SPEC §11.
+- Adding a manifest permission means also updating its justification in `docs/store/listing.md`, the list in `PRIVACY.md`, and SPEC §11.
 
 ## Rules (full text: SPEC §14)
 
