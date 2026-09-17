@@ -8,13 +8,26 @@ GitSync is a Chrome MV3 extension that does one thing: sync branches between Git
 
 ## Status
 
-Milestone M0 (framework-free spike in `spike/`) is in progress. The WXT app has not been scaffolded yet. Do not start M1 until M0 passes (SPEC §12).
+M-1 foundation release in progress (`docs/plans/0002-foundation-release.md`): placeholder side panel plus the CI/CD pipeline to the Chrome Web Store. `spike/` holds the M0 experiment, parked. It is excluded from root lint/typecheck/CI.
+
+## Docs
+
+Every plan or design gets a Markdown file: plans in `docs/plans/NNNN-slug.md`, architecture/process in `docs/` (`SPEC.md`, `DECISIONS.md`, `RELEASING.md`).
 
 ## Commands
 
-Package manager: pnpm. Commands are added here as they come into existence.
+- `pnpm dev`: run with HMR in a WXT-launched Chrome
+- `pnpm build` / `pnpm zip`: production build in `.output/chrome-mv3` / store zip
+- `pnpm test`: vitest (`pnpm vitest run tests/sidePanel.test.ts` for one file)
+- `pnpm lint`, `pnpm typecheck`, `pnpm format:check`: all enforced in CI
+- `pnpm icons`: re-render `public/icon/*.png` from `assets/icon.svg` (needs `rsvg-convert`)
 
-- M0 spike: `cd spike && pnpm install && pnpm build`, then load `spike/dist` unpacked. See `spike/README.md`.
+## Conventions
+
+- Import explicitly (`wxt/browser`, `wxt/utils/define-background`). WXT auto-imports are off. `@/` is the repo root.
+- Tests use `fakeBrowser` from `wxt/testing/fake-browser`. Unmocked APIs (e.g. `sidePanel`) need `vi.spyOn`.
+- PR titles are conventional commits (squash merge). release-please owns the version: never edit it by hand. See `docs/RELEASING.md`.
+- Adding a manifest permission means also updating its justification in `docs/RELEASING.md` and SPEC §11.
 
 ## Rules (full text: SPEC §14)
 

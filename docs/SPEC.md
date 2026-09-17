@@ -490,6 +490,15 @@ Permission justifications — write these now, not at submission:
 
 ## 12. Milestones
 
+### M-1 — Foundation release (see `docs/plans/0002-foundation-release.md`)
+
+Added 2026-09-17. Precedes M0.
+
+- [ ] WXT + React + TS + Tailwind scaffold on the §10 layout, `sidePanel` permission only
+- [ ] CI: format, lint, typecheck, test, build, zip, production-bundle check
+- [ ] release-please → tag → zip on GitHub release → `wxt submit` (API v2)
+- [ ] Unlisted store item live. A second release goes out fully automated
+
 ### M0 — Spike (do this first, alone)
 
 No framework, no UI, no React. A bare unpacked extension with an offscreen
@@ -548,10 +557,11 @@ generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
 
 ## 13. Repo hygiene
 
-- `main` protected, work on `dev`, tags drive releases
-- CI on PR: typecheck + vitest + `wxt build`
-- CI on tag: `wxt zip`, attach to release
-- Conventional commits
+- `main` protected, trunk-based: short-lived branches, squash-merged PRs (DECISIONS 0004)
+- release-please owns versions and changelog. Release tags drive store submission (0005, 0006)
+- CI on PR: format + lint + typecheck + vitest + `wxt zip` + production-bundle check
+- On release: `wxt zip`, attach to GitHub release, `wxt submit` (API v2). Runbook: `docs/RELEASING.md`
+- Conventional commits (enforced on PR titles)
 - `docs/DECISIONS.md` is append-only; every architectural change lands there in
   the same PR as the code
 
