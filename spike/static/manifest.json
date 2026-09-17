@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "GitSync M0 Spike",
+  "version": "0.0.1",
+  "description": "M0 spike: validate git clone/push over HTTPS from an offscreen document with no proxy.",
+  "permissions": ["offscreen", "storage"],
+  "host_permissions": ["https://api.github.com/*", "https://github.com/*"],
+  "background": { "service_worker": "background.js" },
+  "options_ui": { "page": "options.html", "open_in_tab": true }
+}

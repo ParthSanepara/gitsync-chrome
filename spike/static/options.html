@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>GitSync M0 Spike</title>
+<style>
+  body { font: 13px/1.4 system-ui, sans-serif; margin: 16px; max-width: 980px; }
+  fieldset { margin-bottom: 12px; }
+  label { display: block; margin: 4px 0; }
+  input[type=text], input[type=password] { width: 520px; font-family: monospace; }
+  button { margin: 4px 4px 4px 0; }
+  #log { white-space: pre-wrap; font-family: monospace; font-size: 12px; background: #111; color: #ddd; padding: 8px; height: 420px; overflow: auto; }
+  #status { font-family: monospace; }
+</style>
+
+<h1>GitSync M0 Spike</h1>
+
+<fieldset>
+  <legend>Credentials (stored in chrome.storage.session only)</legend>
+  <label>Fine-grained PAT <input id="pat" type="password" autocomplete="off" /></label>
+  <button id="savePat">Save PAT</button>
+  <span id="patState"></span>
+  <label>git onAuth form
+    <select id="authForm">
+      <option value="username">{ username: token } (spec)</option>
+      <option value="x-access-token">{ username: 'x-access-token', password: token }</option>
+    </select>
+  </label>
+</fieldset>
+
+<fieldset>
+  <legend>Exp 1–3, 6: clone + push</legend>
+  <label>Source clone URL <input id="srcUrl" type="text" placeholder="https://github.com/owner/small-repo.git" /></label>
+  <label>Source ref (blank = default branch) <input id="srcRef" type="text" /></label>
+  <label>Target owner/repo (fresh empty repo) <input id="tgtRepo" type="text" placeholder="me/gitsync-spike-target" /></label>
+  <label>Target branch <input id="tgtBranch" type="text" value="spike" /></label>
+  <label><input id="force" type="checkbox" /> force push</label>
+  <button data-exp="clone">1. Clone only</button>
+  <button data-exp="clonePush">2/3. Clone + push (with metrics)</button>
+  <p>Exp 6: start 2/3 on a large repo, then stop this extension's worker at
+    <code>chrome://serviceworker-internals</code> and watch whether progress keeps arriving.</p>
+</fieldset>
+
+<fieldset>
+  <legend>Exp 4: POST git/blobs size ceiling (uses target repo above)</legend>
+  <label>Sizes in MB, comma separated <input id="blobSizes" type="text" value="1,10,25,50,75,100" /></label>
+  <button data-exp="blobCeiling">4. Probe blob ceiling</button>
+</fieldset>
+
+<fieldset>
+  <legend>Exp 5: fork-network ref-copy</legend>
+  <label>Upstream owner/repo <input id="upstream" type="text" placeholder="someone/project" /></label>
+  <label>Upstream branch (ideally has commits the fork lacks) <input id="upstreamBranch" type="text" value="main" /></label>
+  <label>Fork owner/repo (yours) <input id="fork" type="text" placeholder="me/project" /></label>
+  <label>Control non-fork repo (blank = target repo above) <input id="control" type="text" /></label>
+  <button data-exp="refCopy">5. Ref-copy</button>
+</fieldset>
+
+<div id="status"></div>
+<button id="pingSw">Ping SW</button> <button id="clear">Clear log</button> <button id="copy">Copy log</button>
+<div id="log"></div>
+
+<script src="options.js"></script>

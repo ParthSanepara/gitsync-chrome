@@ -14,6 +14,8 @@ Milestone M0 (framework-free spike in `spike/`) is in progress. The WXT app has 
 
 Package manager: pnpm. Commands are added here as they come into existence.
 
+- M0 spike: `cd spike && pnpm install && pnpm build`, then load `spike/dist` unpacked. See `spike/README.md`.
+
 ## Rules (full text: SPEC §14)
 
 1. Don't invent GitHub API endpoints, fields, or limits. Mark unknowns `// VERIFY:` and cover them with a fixture test.
