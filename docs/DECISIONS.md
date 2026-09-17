@@ -78,3 +78,11 @@ Entry format:
 - Context: Plan 0002 ships a UI-only extension. Tooling compatibility at scaffold time.
 - Decision: Manifest permissions are `sidePanel` only. Host and other permissions are added with the features that need them. TypeScript is pinned to 6.0 (typescript-eslint 8 does not support TS 7), and vitest to 4 (the version WXT's test plugin is built against). WXT auto-imports are disabled in favour of explicit imports.
 - Consequences: Revisit the pins when typescript-eslint and WXT support newer majors (Dependabot will surface them).
+
+## 0009 — Repository stays private for now
+
+- Date: 2026-09-17
+- Status: accepted
+- Context: On GitHub's free plan, private repos cannot use rulesets or branch protection, or GitHub Pages. Plan 0002 assumed both.
+- Decision: Keep the repo private. Branch rules on `main` are conventions, not enforced. The privacy policy is published as a public Gist instead of GitHub Pages.
+- Consequences: CI still runs on every PR, but merging with failing checks is technically possible, so don't. Revisit when the repo goes public or the plan is upgraded. The `docs/RELEASING.md` §A.2 and §D steps then switch back.

@@ -31,11 +31,15 @@ strictly higher than the last upload, and a manual upload breaks the pipeline.
    `RELEASE_PLEASE_TOKEN`.
    Why not `GITHUB_TOKEN`: PRs it opens do not trigger workflows, so the release PR would never get CI
    checks and could not satisfy branch protection.
-2. **Ruleset on `main`** (Settings → Rules → Rulesets):
-   - Require a pull request before merging
-   - Require status checks: `Lint, typecheck, test, build` and `Conventional commit title`
-   - Block force pushes and deletions
-   - Require linear history
+2. **Ruleset on `main`** (Settings → Rules → Rulesets). **Not available while the repo is private on
+   a free plan** (DECISIONS 0009). Until then these are conventions, not enforced:
+   - Merge through a PR only after CI and the PR-title check pass
+   - No force pushes to `main`
+
+   When the repo goes public or the plan is upgraded, turn them into a ruleset: require a PR, require status
+   checks `Lint, typecheck, test, build` and `Conventional commit title`, block force pushes and deletions,
+   require linear history.
+
 3. **Merge settings** (Settings → General): allow squash merging only. Default squash message: _Pull request title_.
    Enable "Automatically delete head branches".
 4. **Environment** `chrome-web-store` (Settings → Environments). Optionally add yourself as a required
@@ -85,8 +89,10 @@ are v1.1-only and deprecated.
 
 ### D. Privacy policy page
 
-Settings → Pages → deploy from branch `main`, folder `/ (root)`. `PRIVACY.md` is then served at
-`https://<owner>.github.io/gitsync-chrome/PRIVACY`. Use that URL in B.4.
+The store asks for a privacy policy URL, and it must be publicly reachable. While the repo is private
+(DECISIONS 0009), GitHub Pages is not an option on the free plan. Publish the contents of `PRIVACY.md`
+as a **public GitHub Gist** (https://gist.github.com, "Create public gist") and use the gist URL in B.4.
+When `PRIVACY.md` changes, update the gist in the same PR.
 
 ## Verifying the pipeline end to end
 
