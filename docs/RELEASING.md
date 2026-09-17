@@ -58,11 +58,9 @@ strictly higher than the last upload, and a manual upload breaks the pipeline.
    - At least one screenshot, 1280×800 or 640×400
    - Category: Developer Tools
 4. **Privacy tab**
-   - Single purpose: _Sync branches between GitHub repositories._
-   - Permission justifications (keep in sync with `wxt.config.ts` and SPEC §11):
-     - `sidePanel`: "The extension's interface is a side panel so a long-running sync stays visible while the user works in other tabs."
+   - Single purpose, justifications, remote code: copy from `docs/store/listing.md` (Privacy practices tab).
    - Data usage: no user data collected. Tick the three certification boxes.
-   - Privacy policy URL: GitHub Pages URL of `PRIVACY.md` (see D).
+   - Privacy policy URL: public Gist URL of `PRIVACY.md` (see D).
 5. **Distribution**: visibility **Unlisted**.
 6. Submit for review.
 7. Copy the **Publisher ID** (Dashboard → Settings / Account) and the **extension ID**.
