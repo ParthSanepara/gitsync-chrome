@@ -27,7 +27,7 @@ strictly higher than the last upload, and a manual upload breaks the pipeline.
 ### A. GitHub repository
 
 1. **Release token.** Create a fine-grained PAT (or GitHub App token) scoped to this repo with
-   _Contents: read & write_ and _Pull requests: read & write_. Save it as repository secret
+   _Contents_, _Issues_ (for release labels), and _Pull requests_ all set to read & write. Save it as repository secret
    `RELEASE_PLEASE_TOKEN`.
    Why not `GITHUB_TOKEN`: PRs it opens do not trigger workflows, so the release PR would never get CI
    checks and could not satisfy branch protection.
