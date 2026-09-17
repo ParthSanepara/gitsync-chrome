@@ -104,13 +104,14 @@ After B–D, merge any `fix:` PR, then merge the resulting release PR (`v0.1.1`)
 
 ## Troubleshooting
 
-| Symptom                                  | Cause / fix                                                                                        |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Release PR has no CI checks              | `RELEASE_PLEASE_TOKEN` missing or lacks permissions (A.1)                                          |
-| `publish` skipped with notice            | environment secrets not set (C.4)                                                                  |
-| Upload rejected: version must be greater | someone uploaded manually. Release a new version through the pipeline                              |
-| Upload rejected: item has pending review | a previous submission is still in review. Wait, or cancel it in the dashboard, then re-run the job |
-| 401/403 from store API                   | service account email not added in dashboard (C.3), or wrong publisher ID                          |
+| Symptom                                          | Cause / fix                                                                                                |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Release PR has no CI checks                      | `RELEASE_PLEASE_TOKEN` missing or lacks permissions (A.1)                                                  |
+| Release PR CI fails after a fix landed on `main` | release-please only refreshes its PR when the changelog changes. Click **Update branch** on the release PR |
+| `publish` skipped with notice                    | environment secrets not set (C.4)                                                                          |
+| Upload rejected: version must be greater         | someone uploaded manually. Release a new version through the pipeline                                      |
+| Upload rejected: item has pending review         | a previous submission is still in review. Wait, or cancel it in the dashboard, then re-run the job         |
+| 401/403 from store API                           | service account email not added in dashboard (C.3), or wrong publisher ID                                  |
 
 ## Rotating credentials
 
