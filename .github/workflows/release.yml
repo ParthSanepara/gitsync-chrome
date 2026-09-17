@@ -53,6 +53,7 @@ jobs:
           name: chrome-zip
           path: .output/*-chrome.zip
           if-no-files-found: error
+          include-hidden-files: true # .output is a dot-directory
 
   publish:
     needs: build
