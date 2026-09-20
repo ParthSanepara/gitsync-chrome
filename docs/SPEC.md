@@ -135,6 +135,7 @@ interface Provider {
   };
 
   listRepos(cred: Credential, q: string): Promise<Repo[]>;
+  getRepo(cred: Credential, repo: RepoRef): Promise<Repo>;   // any repo the account can read, not only its own
   listRefs(cred: Credential, repo: RepoRef): Promise<Ref[]>;
   resolveRef(cred: Credential, repo: RepoRef, ref: string): Promise<Commit>;
   getTree(cred: Credential, repo: RepoRef, sha: string): Promise<TreeEntry[]>;

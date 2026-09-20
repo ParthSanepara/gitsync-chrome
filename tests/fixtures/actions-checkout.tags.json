@@ -1,0 +1,22 @@
+[
+  {
+    "name": "v7.0.1",
+    "zipball_url": "https://api.github.com/repos/actions/checkout/zipball/refs/tags/v7.0.1",
+    "tarball_url": "https://api.github.com/repos/actions/checkout/tarball/refs/tags/v7.0.1",
+    "commit": {
+      "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "url": "https://api.github.com/repos/actions/checkout/commits/3d3c42e5aac5ba805825da76410c181273ba90b1"
+    },
+    "node_id": "MDM6UmVmMTk3ODE0NjI5OnJlZnMvdGFncy92Ny4wLjE="
+  },
+  {
+    "name": "v7.0.0",
+    "zipball_url": "https://api.github.com/repos/actions/checkout/zipball/refs/tags/v7.0.0",
+    "tarball_url": "https://api.github.com/repos/actions/checkout/tarball/refs/tags/v7.0.0",
+    "commit": {
+      "sha": "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+      "url": "https://api.github.com/repos/actions/checkout/commits/9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+    },
+    "node_id": "MDM6UmVmMTk3ODE0NjI5OnJlZnMvdGFncy92Ny4wLjA="
+  }
+]

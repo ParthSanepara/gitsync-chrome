@@ -29,3 +29,30 @@ export const userResponse = z.object({
   id: z.number(),
   avatar_url: z.string().optional(),
 });
+
+// Shapes below were checked against recorded public responses in tests/fixtures.
+
+export const repoResponse = z.object({
+  name: z.string(),
+  full_name: z.string(),
+  owner: z.object({ login: z.string() }),
+  private: z.boolean(),
+  fork: z.boolean(),
+  archived: z.boolean(),
+  default_branch: z.string(),
+  // Size in KB.
+  size: z.number().optional(),
+  // VERIFY: present on authenticated responses, absent on the unauthenticated fixture.
+  permissions: z.object({ admin: z.boolean(), push: z.boolean(), pull: z.boolean() }).optional(),
+});
+
+export const refListItem = z.object({
+  name: z.string(),
+  commit: z.object({ sha: z.string() }),
+});
+
+export const commitResponse = z.object({
+  sha: z.string(),
+  commit: z.object({ message: z.string(), tree: z.object({ sha: z.string() }) }),
+  parents: z.array(z.object({ sha: z.string() })),
+});
