@@ -141,8 +141,12 @@ interface Provider {
   getTree(cred: Credential, repo: RepoRef, sha: string): Promise<TreeEntry[]>;
   listCommits(cred: Credential, repo: RepoRef, ref: string, n: number): Promise<Commit[]>;
 
-  /** Can a ref in `tgt` point at a commit object that only exists in `src`? */
-  sharesObjectStore(src: RepoRef, tgt: RepoRef, cred: Credential): Promise<boolean>;
+  /** Can a ref in `repo` point at this commit? True across a fork network. A probe, not an assumption. */
+  canReachCommit(cred: Credential, repo: RepoRef, sha: string): Promise<boolean>;
+  getBranch(cred: Credential, repo: RepoRef, branch: string): Promise<BranchState>;
+  getTree(cred: Credential, repo: RepoRef, sha: string): Promise<{ entries: TreeEntry[]; truncated: boolean }>;
+  readBlobText(cred: Credential, repo: RepoRef, sha: string): Promise<string>;
+  rateLimit(): RateLimit | undefined;
 
   capabilities: {
     batchCommit: boolean;      // one call for many file actions (GitLab: true)
@@ -166,7 +170,7 @@ Three known GitLab divergences, encoded above so the planner never assumes:
 
 - **No object-store sharing.** GitHub's fork network lets you create a ref
   pointing at a commit that exists only in the parent. GitLab has no equivalent,
-  so the ref-copy engine is GitHub-only. Hence `sharesObjectStore()` is a probe,
+  so the ref-copy engine is GitHub-only. Hence `canReachCommit()` is a probe,
   not an assumption.
 - **Batch commits.** GitLab's commits API accepts an array of file actions
   (create/update/delete/move) in one call, replacing GitHub's
@@ -303,7 +307,7 @@ interface SyncPlan {
 
 Engine selection, in order — first match wins:
 
-1. `mode === 'full'` **and** `provider.sharesObjectStore(src, tgt)` → **ref-copy**
+1. `mode === 'full'` **and** `provider.canReachCommit(tgt, srcSha)` → **ref-copy**
 2. `mode === 'snapshot'` or (`mode === 'lastN'` and `n` small) → **tree-replay**
 3. `mode === 'full'` → **git-clone**
 4. repo too large for git-clone → **blocker**, with guidance

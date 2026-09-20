@@ -1,5 +1,10 @@
 import { useState } from 'react';
+import { describeApiError } from '@/src/errors';
+import type { HistoryMode, SyncPlan, WriteMode } from '@/src/plan';
+import { buildPlan } from '@/src/planner';
 import type { Credential, Repo } from '@/src/providers/types';
+import { provider } from '../provider';
+import { PlanView } from './PlanView';
 import { BranchSelect } from './BranchSelect';
 import { RepoPicker } from './RepoPicker';
 
@@ -59,28 +64,95 @@ function targetProblem(source: Side, target: Side): string | undefined {
   return undefined;
 }
 
+const select =
+  'w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800';
+
 export function Setup({ credential }: { credential: Credential }) {
-  const [source, setSource] = useState<Side>({});
-  const [target, setTarget] = useState<Side>({});
+  const [source, setSourceRaw] = useState<Side>({});
+  const [target, setTargetRaw] = useState<Side>({});
+  const [mode, setModeRaw] = useState<HistoryMode>('snapshot');
+  const [write, setWriteRaw] = useState<WriteMode>('push');
+  const [plan, setPlan] = useState<SyncPlan | undefined>();
+  const [planning, setPlanning] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  // Any change to the inputs invalidates the plan that was shown.
+  const edited =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      setPlan(undefined);
+      setError(undefined);
+    };
+  const setSource = edited(setSourceRaw);
+  const setTarget = edited(setTargetRaw);
+  const setMode = edited(setModeRaw);
+  const setWrite = edited(setWriteRaw);
+
   const problem = targetProblem(source, target);
   const ready = source.repo && source.ref && target.repo && target.ref && !problem;
+
+  async function preview() {
+    if (!source.repo || !source.ref || !target.repo || !target.ref) return;
+    setPlanning(true);
+    setError(undefined);
+    const res = await buildPlan(provider, {
+      source: { repo: source.repo, ref: source.ref },
+      target: { repo: target.repo, branch: target.ref },
+      mode,
+      write,
+      credentials: { source: credential, target: credential },
+    });
+    setPlanning(false);
+    if (res.ok) setPlan(res.value);
+    else setError(describeApiError(res.error));
+  }
 
   return (
     <div className="flex flex-col gap-5">
       <SidePicker title="Source" credential={credential} side={source} onChange={setSource} />
       <SidePicker title="Target" credential={credential} side={target} onChange={setTarget} />
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">What to copy</h2>
+        <select
+          className={select}
+          value={mode}
+          onChange={(e) => setMode(e.target.value as HistoryMode)}
+          aria-label="History"
+        >
+          <option value="snapshot">Latest commit only</option>
+          <option value="full">Full history</option>
+        </select>
+        <select
+          className={select}
+          value={write}
+          onChange={(e) => setWrite(e.target.value as WriteMode)}
+          aria-label="Write mode"
+        >
+          <option value="push">Push to the target branch</option>
+          <option value="force-push">Force push (overwrite the target branch)</option>
+        </select>
+      </section>
+
       {problem && (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">
           {problem}
         </p>
       )}
+      {error && (
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
       <button
-        disabled={!ready}
+        disabled={!ready || planning}
+        onClick={() => void preview()}
         className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white enabled:hover:bg-slate-700 disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900"
       >
-        Preview sync
+        {planning ? 'Planning…' : 'Preview sync'}
       </button>
-      <p className="text-xs text-slate-500">Preview and sync arrive in the next step.</p>
+      {plan && <PlanView plan={plan} />}
     </div>
   );
 }
