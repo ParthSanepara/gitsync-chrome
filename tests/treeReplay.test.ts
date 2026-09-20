@@ -51,6 +51,8 @@ class Sim implements WritableProvider {
   commitsMade: Array<{ message: string; treeSha: string; parents: string[] }> = [];
   refWrites: Array<{ kind: 'create' | 'update'; branch: string; sha: string; force?: boolean }> = [];
   private n = 0;
+  /** A real empty repo answers "empty" for any branch until its first commit. */
+  emptyDst = false;
   failCreateBlob: ApiError | undefined;
   corruptBlobs = false;
   onCreateBlob: (() => void) | undefined;
@@ -75,8 +77,11 @@ class Sim implements WritableProvider {
     const c = this.commits[branch?.state === 'exists' ? branch.sha : ref];
     return c ? ok(c) : err({ code: 'not_found' });
   };
-  getBranch = async (_c: Credential, r: { owner: string; name: string }, b: string) =>
-    ok<BranchState>(this.branches[`${r.owner}/${r.name}#${b}`] ?? { state: 'missing' });
+  getBranch = async (_c: Credential, r: { owner: string; name: string }, b: string) => {
+    const hasCommits = Object.keys(this.branches).some((k) => k.startsWith('me/dst#'));
+    if (this.emptyDst && r.name === 'dst' && !hasCommits) return ok<BranchState>({ state: 'empty-repo' });
+    return ok<BranchState>(this.branches[`${r.owner}/${r.name}#${b}`] ?? { state: 'missing' });
+  };
   getTree = async (_c: Credential, _r: unknown, sha: string) => {
     this.log.push(`getTree ${sha}`);
     const t = this.trees[sha];
@@ -186,7 +191,7 @@ function scenario(opts: { target?: 'exists' | 'missing' | 'empty'; sourceFiles?:
     sim.addCommit('tgt1', [file('a.txt', 'A'), file('b.txt', 'B1'), file('gone.txt', 'G')]);
     sim.branches['me/dst#main'] = { state: 'exists', sha: 'tgt1' };
   } else if (opts.target === 'empty') {
-    sim.branches['me/dst#main'] = { state: 'empty-repo' };
+    sim.emptyDst = true;
   }
   return sim;
 }
@@ -326,5 +331,42 @@ describe('treeReplay.execute', () => {
     ctl.abort();
     expect(await run(sim, plan, ctl.signal)).toEqual({ ok: false, error: { code: 'cancelled' } });
     expect(sim.log.filter((l) => l.startsWith('create'))).toEqual([]);
+  });
+});
+
+describe('treeReplay.execute: a new branch', () => {
+  const feature = () => request({ target: { repo: repo('me/dst'), branch: 'feature/x' } });
+
+  it('is created from the target default branch, leaves that branch alone, and equals the source', async () => {
+    const sim = scenario();
+    const plan = await planFor(sim, feature());
+    const res = await run(sim, plan);
+
+    expect(res.ok).toBe(true);
+    expect(sim.refWrites).toEqual([{ kind: 'create', branch: 'feature/x', sha: 'newcommit_2' }]);
+    expect(sim.commitsMade[0]?.parents).toEqual(['tgt1']);
+    expect(sim.treeWrites[0]?.base).toBe('tree_tgt1');
+    expect(sim.log.filter((l) => l === 'createBlob')).toHaveLength(2); // only what differs from main
+    expect(byPath(sim.targetTreeOf('feature/x'))).toEqual(byPath(sim.trees['tree_src1'] ?? []));
+    expect(sim.branches['me/dst#main']).toEqual({ state: 'exists', sha: 'tgt1' });
+  });
+
+  it('refuses if the default branch moved after the preview', async () => {
+    const sim = scenario();
+    const plan = await planFor(sim, feature());
+    sim.addCommit('tgt2', [file('a.txt', 'A')]);
+    sim.branches['me/dst#main'] = { state: 'exists', sha: 'tgt2' };
+    expect(await run(sim, plan)).toEqual({ ok: false, error: { code: 'stale_plan' } });
+    expect(sim.refWrites).toEqual([]);
+  });
+
+  it('after bootstrapping an empty repo, branches from the new default branch', async () => {
+    const sim = scenario({ target: 'empty' });
+    const plan = await planFor(sim, feature());
+    const res = await run(sim, plan);
+    expect(res.ok).toBe(true);
+    expect(sim.refWrites[0]).toMatchObject({ kind: 'create', branch: 'feature/x' });
+    expect(sim.commitsMade[0]?.parents).toHaveLength(1);
+    expect(byPath(sim.targetTreeOf('feature/x'))).toEqual(byPath(sim.trees['tree_src1'] ?? []));
   });
 });

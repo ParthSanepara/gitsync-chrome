@@ -18,7 +18,18 @@ export interface PlanRequest {
 /** What the preview shows and an engine executes (SPEC §7). Nothing downstream knows how it was planned. */
 export interface SyncPlan {
   source: { repo: Repo; ref: string; commit: Commit };
-  target: { repo: Repo; branch: string; exists: boolean; currentSha?: string; empty: boolean };
+  target: {
+    repo: Repo;
+    branch: string;
+    exists: boolean;
+    currentSha?: string;
+    empty: boolean;
+    /**
+     * A branch that does not exist yet starts from the target's default branch, so it shares history and
+     * only the differences are uploaded. Absent when the target has nothing to start from.
+     */
+    base?: { branch: string; sha: string };
+  };
   mode: HistoryMode;
   n?: number;
   write: WriteMode;

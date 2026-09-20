@@ -63,12 +63,26 @@ async function run(
     if (!branch.ok) return branch;
   }
 
-  // The tree the new commit is built on, and its parent, if the branch exists.
-  let tipSha: string | undefined;
+  // A new branch starts from the target's default branch. After bootstrapping an empty repo the default
+  // branch exists only now, so look it up again.
+  let baseBranch = plan.target.base;
+  if (branch.value.state === 'missing' && plan.target.empty) {
+    const def = await provider.getBranch(tCred, target.repo, target.repo.defaultBranch);
+    if (!def.ok) return def;
+    if (def.value.state === 'exists' && target.repo.defaultBranch !== target.branch) {
+      baseBranch = { branch: target.repo.defaultBranch, sha: def.value.sha };
+    }
+  } else if (baseBranch) {
+    const def = await provider.getBranch(tCred, target.repo, baseBranch.branch);
+    if (!def.ok) return def;
+    if (def.value.state !== 'exists' || def.value.sha !== baseBranch.sha) return err({ code: 'stale_plan' });
+  }
+
+  const branchExists = branch.value.state === 'exists';
+  const tipSha = branch.value.state === 'exists' ? branch.value.sha : baseBranch?.sha;
   let baseTreeSha: string | undefined;
   let targetEntries: TreeEntry[] = [];
-  if (branch.value.state === 'exists') {
-    tipSha = branch.value.sha;
+  if (tipSha) {
     const tip = await provider.resolveRef(tCred, target.repo, tipSha);
     if (!tip.ok) return tip;
     baseTreeSha = tip.value.treeSha;
@@ -148,7 +162,7 @@ async function run(
 
   // 4. Move the branch. Last, so a failure earlier leaves the target untouched.
   say('updating-branch', 0, 1, `Updating ${target.branch}`);
-  const moved = tipSha
+  const moved = branchExists
     ? await provider.updateRef(tCred, target.repo, target.branch, commit.value, plan.write === 'force-push')
     : await provider.createRef(tCred, target.repo, target.branch, commit.value);
   if (!moved.ok) return moved;

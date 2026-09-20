@@ -102,3 +102,19 @@ Entry format:
 - Context: SPEC §4 runs engines in an offscreen document so a long sync survives the UI closing. The tree-replay engine is REST-only: minutes at most, no heavy memory, and the user is watching the panel.
 - Decision: The side panel calls the runner directly (`src/runner.ts`). The offscreen document arrives with the git-clone engine or scheduled syncs, whichever needs it first. The planner and engines depend only on `Provider`/`WritableProvider` and an `AbortSignal`, so moving them is a change of caller, not of code.
 - Consequences: Closing the panel mid-sync cancels it, and the UI says so. The target branch moves last, so a cancelled run leaves the branch untouched (orphan blobs are harmless). Rule 2 (no long work in the service worker) still holds.
+
+## 0013 — Ask for `repo workflow` at login
+
+- Date: 2026-09-20
+- Status: accepted (supersedes the "workflow on demand" part of 0010)
+- Context: 0010 requested `repo` and asked for `workflow` only when a sync touched `.github/workflows`. In use, that meant a second device-flow approval in the middle of a sync, right after the first.
+- Decision: The login requests `repo workflow` in one approval. The "Grant workflow permission" button stays as a fallback for a login that lacks it.
+- Consequences: The consent screen is broader up front, which SPEC §6.2 warned can deter users. The user chose one approval over the narrower first prompt. `workflow` lets a token change GitHub Actions files in any repo the user can write, so it makes the stored token (0014) more valuable to steal.
+
+## 0014 — Keep the login for seven days
+
+- Date: 2026-09-20
+- Status: accepted (supersedes "tokens only in `chrome.storage.session`" in SPEC §6.4 and CLAUDE.md)
+- Context: Session storage is cleared when the browser closes, so the user signed in again on every restart.
+- Decision: Store the credential in `chrome.storage.local` with an absolute 7-day expiry. Drop it on: expiry, a missing or implausible expiry, malformed data, GitHub answering 401, a different account or scopes reported on open, an extension update, or sign out. Uninstalling deletes the storage.
+- Consequences: The token now sits on disk unencrypted. Anything with access to the browser profile can read it, and it carries `workflow` (0013). Detection is limited to the checks above. There is no way to notice "unwanted activity" on GitHub from inside the extension, and no revoke call without a client secret, so a user who suspects misuse must revoke at github.com/settings/applications. `chrome.storage.sync` stays forbidden.

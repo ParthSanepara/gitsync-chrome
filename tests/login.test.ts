@@ -19,7 +19,11 @@ function fakeDeps(user: Response): DeviceFlowDeps {
     json({ access_token: 'gho_secret', token_type: 'bearer', scope: 'repo' }),
     user,
   ];
-  return { fetch: (async () => queue.shift()) as unknown as typeof fetch, now: () => 0, sleep: async () => true };
+  return {
+    fetch: (async () => queue.shift()) as unknown as typeof fetch,
+    now: () => Date.now(),
+    sleep: async () => true,
+  };
 }
 
 describe('signInWithGitHub', () => {
@@ -66,5 +70,26 @@ describe('signInWithGitHub', () => {
     const res = await signInWithGitHub(() => {}, new AbortController().signal, deps, 'repo workflow');
     expect(new URLSearchParams(bodies[0]).get('scope')).toBe('repo workflow');
     expect(res.ok).toBe(true);
+  });
+
+  it('asks for repo and workflow together by default, so one login is enough', async () => {
+    const bodies: string[] = [];
+    const deps = fakeDeps(json({ login: 'octo', id: 1 }));
+    const inner = deps.fetch;
+    deps.fetch = (async (url: string, init?: RequestInit) => {
+      bodies.push(String(init?.body));
+      return inner(url, init);
+    }) as unknown as typeof fetch;
+    await signInWithGitHub(() => {}, new AbortController().signal, deps);
+    expect(new URLSearchParams(bodies[0]).get('scope')).toBe('repo workflow');
+  });
+
+  it('stamps a seven-day expiry on the stored login', async () => {
+    const res = await signInWithGitHub(
+      () => {},
+      new AbortController().signal,
+      fakeDeps(json({ login: 'octo', id: 1 })),
+    );
+    expect(res.ok && res.value.expiresAt).toBeGreaterThan(Date.now() + 6.9 * 24 * 60 * 60 * 1000);
   });
 });

@@ -95,7 +95,7 @@ export type PlanBlocker =
 export type PlanWarning =
   | { code: 'submodules'; count: number }
   | { code: 'sha_not_preserved' }
-  | { code: 'target_branch_created' }
+  | { code: 'target_branch_created'; from?: string }
   | { code: 'target_repo_empty' }
   | { code: 'write_access_unverified' }
   | { code: 'fork_probe_failed' };
@@ -142,7 +142,9 @@ export function describePlanWarning(w: PlanWarning): string {
     case 'sha_not_preserved':
       return 'The new commit will have a different SHA than the source commit.';
     case 'target_branch_created':
-      return 'The target branch does not exist and will be created.';
+      return w.from
+        ? `The target branch does not exist. It will be created from ${w.from}, with one commit on top.`
+        : 'The target branch does not exist and will be created (no shared history with the target).';
     case 'target_repo_empty':
       return 'The target repository is empty, so the first commit needs a special path.';
     case 'write_access_unverified':

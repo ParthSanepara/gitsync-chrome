@@ -28,7 +28,15 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
   const branch = await provider.getBranch(credentials.target, target.repo, target.branch);
   if (!branch.ok) return branch;
 
-  addTargetChecks(req, branch.value, blockers, warnings);
+  // A new branch starts from the target's default branch (shared history, fewer uploads).
+  let startFrom: { branch: string; sha: string } | undefined;
+  if (branch.value.state === 'missing' && target.repo.defaultBranch !== target.branch) {
+    const def = await provider.getBranch(credentials.target, target.repo, target.repo.defaultBranch);
+    if (!def.ok) return def;
+    if (def.value.state === 'exists') startFrom = { branch: target.repo.defaultBranch, sha: def.value.sha };
+  }
+
+  addTargetChecks(req, branch.value, startFrom, blockers, warnings);
 
   // Engine selection, first match wins (SPEC §7).
   let engine: EngineId;
@@ -67,6 +75,7 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
       exists: branch.value.state === 'exists',
       currentSha: branch.value.state === 'exists' ? branch.value.sha : undefined,
       empty: branch.value.state === 'empty-repo',
+      base: startFrom,
     },
     mode: req.mode,
     n: req.n,
@@ -80,8 +89,6 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
     if (branch.value.state === 'exists') {
       if (branch.value.sha === commit.value.sha) blockers.push({ code: 'already_in_sync' });
       else if (req.write !== 'force-push') blockers.push({ code: 'needs_force' });
-    } else {
-      warnings.push({ code: 'target_branch_created' });
     }
     return ok(finish(provider, { ...base, estimate: { ...zero, apiCalls: 1 }, warnings, blockers }));
   }
@@ -99,7 +106,8 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
 
   // tree-replay, snapshot
   warnings.push({ code: 'sha_not_preserved' });
-  const analysis = await analyseSnapshot(provider, req, commit.value.treeSha, branch.value);
+  const baseSha = branch.value.state === 'exists' ? branch.value.sha : startFrom?.sha;
+  const analysis = await analyseSnapshot(provider, req, commit.value.treeSha, baseSha);
   if (!analysis.ok) return analysis;
   blockers.push(...analysis.value.blockers);
   warnings.push(...analysis.value.warnings);
@@ -109,6 +117,7 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
 function addTargetChecks(
   req: PlanRequest,
   branch: BranchState,
+  startFrom: { branch: string; sha: string } | undefined,
   blockers: PlanBlocker[],
   warnings: PlanWarning[],
 ): void {
@@ -118,7 +127,7 @@ function addTargetChecks(
   else if (target.repo.canPush === undefined) warnings.push({ code: 'write_access_unverified' });
   if (source.repo.fullName === target.repo.fullName && source.ref === target.branch)
     blockers.push({ code: 'same_branch' });
-  if (branch.state === 'missing') warnings.push({ code: 'target_branch_created' });
+  if (branch.state === 'missing') warnings.push({ code: 'target_branch_created', from: startFrom?.branch });
   if (branch.state === 'empty-repo') warnings.push({ code: 'target_repo_empty' });
 }
 
@@ -126,7 +135,8 @@ async function analyseSnapshot(
   provider: Provider,
   req: PlanRequest,
   sourceTreeSha: string,
-  branch: BranchState,
+  /** The commit the new commit will sit on: the branch tip, or the default branch for a new branch. */
+  baseSha: string | undefined,
 ): Promise<Result<{ estimate: SyncPlan['estimate']; blockers: PlanBlocker[]; warnings: PlanWarning[] }, ApiError>> {
   const { source, target, credentials } = req;
   const blockers: PlanBlocker[] = [];
@@ -146,8 +156,8 @@ async function analyseSnapshot(
 
   // Target side: its current tree, so we upload only what differs.
   let targetEntries: TreeEntry[] = [];
-  if (branch.state === 'exists') {
-    const tip = await provider.resolveRef(credentials.target, target.repo, branch.sha);
+  if (baseSha) {
+    const tip = await provider.resolveRef(credentials.target, target.repo, baseSha);
     if (!tip.ok) return tip;
     const tgtTree = await provider.getTree(credentials.target, target.repo, tip.value.treeSha);
     if (!tgtTree.ok) return tgtTree;

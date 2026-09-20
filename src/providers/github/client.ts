@@ -39,7 +39,10 @@ export class GitHubClient {
   private readWaiters: Array<() => void> = [];
   private writeChain: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly deps: ClientDeps = defaultClientDeps) {}
+  constructor(
+    private readonly deps: ClientDeps = defaultClientDeps,
+    private readonly hooks: { onUnauthorized?: () => void } = {},
+  ) {}
 
   async get<S extends z.ZodType>(
     cred: Credential,
@@ -155,6 +158,8 @@ export class GitHubClient {
       if (res.ok) return readBody(res);
 
       const failure = await this.classify(res);
+      // GitHub says the token is dead. Let the app drop it instead of retrying with it.
+      if (failure.code === 'unauthorized') this.hooks.onUnauthorized?.();
       if (failure.code === 'rate_limited') {
         const wait = failure.resetAt - this.deps.now();
         // A rate-limited request was not processed, so any method is safe to retry after a short wait.

@@ -263,10 +263,20 @@ complain about the breadth of `repo`.
 
 ### 6.4 Storage rules
 
-- Tokens → `chrome.storage.session`. Cleared on browser restart by design.
+- Tokens → `chrome.storage.local`, for at most 7 days from sign-in (DECISIONS 0014). This replaces the earlier
+  session-only rule so a browser restart does not force a new login. Local storage is on disk and unencrypted, so
+  a stored credential is dropped, and the user signs in again, when any of these happen:
+  - it is older than 7 days, or its expiry is missing or implausibly far ahead, or the data does not parse
+  - GitHub answers 401 to it (revoked or expired), on open or during any call
+  - on open, GitHub reports a different account or different scopes than the ones stored
+  - the extension updates (`runtime.onInstalled`, reason `update`)
+  - the user signs out
+  Removing or reinstalling the extension deletes its storage, so it also ends the login.
 - Sync profiles, UI prefs → `chrome.storage.local`.
 - **Nothing** in `chrome.storage.sync` — it replicates to Google's servers.
 - Never log a token, not even truncated, not even in dev builds.
+- Signing out only forgets the token here. Revoking it on GitHub (github.com/settings/applications) is up to the
+  user, because revoking needs the OAuth App's client secret, which the extension does not have.
 
 ---
 

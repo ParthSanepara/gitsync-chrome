@@ -287,3 +287,35 @@ describe('engine selection', () => {
     expect((await buildPlan(provider, request())).ok).toBe(true);
   });
 });
+
+describe('creating a branch that does not exist yet', () => {
+  const feature = () => request({ target: { repo: repo('me/dst'), branch: 'feature/x' } });
+
+  it('starts from the target default branch and only counts what differs from it', async () => {
+    const p = await plan(world(), feature());
+    expect(p.target).toMatchObject({ exists: false, base: { branch: 'main', sha: 'tgt1' } });
+    // Same diff as syncing onto main: b.txt modified, new.txt added, gone.txt deleted.
+    expect(p.estimate.filesChanged).toBe(3);
+    expect(p.estimate.blobsToUpload).toBe(2);
+    expect(p.warnings).toContainEqual({ code: 'target_branch_created', from: 'main' });
+  });
+
+  it('has no base when the target has no default branch to start from', async () => {
+    const p = await plan(world({ branches: {} }), feature());
+    expect(p.target.base).toBeUndefined();
+    expect(p.estimate.blobsToUpload).toBe(3);
+    expect(p.warnings).toContainEqual({ code: 'target_branch_created', from: undefined });
+  });
+
+  it('does not treat the default branch as a base for itself', async () => {
+    const p = await plan(world({ branches: {} }));
+    expect(p.target.base).toBeUndefined();
+  });
+
+  it('reports "already in sync" only against the base, so an identical default branch still gets the new branch', async () => {
+    const w = world();
+    w.trees.tgtTree = { entries: w.trees.srcTree?.entries ?? [] };
+    // The new branch would be identical to main: nothing to commit.
+    expect(codes((await plan(w, feature())).blockers)).toEqual(['already_in_sync']);
+  });
+});

@@ -199,3 +199,17 @@ describe('GitHubClient writes', () => {
     expect(b.ok).toBe(true);
   });
 });
+
+describe('GitHubClient 401 hook', () => {
+  it('tells the app when GitHub rejects the token, and does not retry with it', async () => {
+    const dead = vi.fn();
+    const fetchMock = vi.fn(async () => json({ message: 'Bad credentials' }, { status: 401 }));
+    const client = new GitHubClient(
+      { fetch: fetchMock as unknown as typeof fetch, sleep: async () => {}, now: () => 0 },
+      { onUnauthorized: dead },
+    );
+    expect(await client.get(cred, '/x', item)).toEqual({ ok: false, error: { code: 'unauthorized' } });
+    expect(dead).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

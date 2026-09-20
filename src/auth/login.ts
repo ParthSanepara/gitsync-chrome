@@ -1,7 +1,7 @@
 import { ok, type AuthError, type Result } from '@/src/errors';
-import { fetchLogin } from '@/src/providers/github/user';
+import { fetchIdentity } from '@/src/providers/github/user';
 import type { Credential } from '@/src/providers/types';
-import { GITHUB_CLIENT_ID, GITHUB_SCOPE } from './config';
+import { CREDENTIAL_TTL_MS, GITHUB_CLIENT_ID, GITHUB_SCOPE } from './config';
 import { defaultDeps, pollForToken, requestDeviceCode, type DeviceCode, type DeviceFlowDeps } from './device';
 import { credentialKey, saveCredential } from './store';
 
@@ -23,15 +23,16 @@ export async function signInWithGitHub(
   const token = await pollForToken(GITHUB_CLIENT_ID, code.value, signal, deps);
   if (!token.ok) return token;
 
-  const login = await fetchLogin(token.value.token, deps.fetch);
-  if (!login.ok) return login;
+  const who = await fetchIdentity(token.value.token, deps.fetch);
+  if (!who.ok) return who;
 
   const credential: Credential = {
-    key: credentialKey(login.value),
+    key: credentialKey(who.value.login),
     kind: 'oauth',
     token: token.value.token,
     scopes: token.value.scopes,
-    login: login.value,
+    login: who.value.login,
+    expiresAt: deps.now() + CREDENTIAL_TTL_MS,
   };
   await saveCredential(credential);
   return ok(credential);
