@@ -86,3 +86,11 @@ Entry format:
 - Context: On GitHub's free plan, private repos cannot use rulesets or branch protection, or GitHub Pages. Plan 0002 assumed both.
 - Decision: Keep the repo private. Branch rules on `main` are conventions, not enforced. The privacy policy is published as a public Gist instead of GitHub Pages.
 - Consequences: CI still runs on every PR, but merging with failing checks is technically possible, so don't. Revisit when the repo goes public or the plan is upgraded. The `docs/RELEASING.md` §A.2 and §D steps then switch back.
+
+## 0011 — Device-flow polling runs in the side panel
+
+- Date: 2026-09-20
+- Status: accepted
+- Context: SPEC §14 rule 2 keeps long-running work out of the service worker. Login polling lasts up to 15 minutes but only matters while the user is looking at the code.
+- Decision: The side panel runs the device-flow login (request code, poll, fetch identity, store credential). It is an extension page, so it can call `github.com/login/*` under the host permission and write `chrome.storage.session`. No offscreen document is needed for auth.
+- Consequences: Closing the panel cancels an in-progress login. Sync engines still run in the offscreen document. Only `https://github.com/*` is added to `host_permissions`; `api.github.com` sends CORS headers, so its host permission waits for a feature that needs it.

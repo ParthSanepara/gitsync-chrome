@@ -10,7 +10,9 @@ export default defineConfig({
   manifest: {
     name: 'GitSync',
     description: 'Sync branches between GitHub repositories.',
-    permissions: ['sidePanel'],
+    permissions: ['sidePanel', 'storage'],
+    // Device flow POSTs to github.com/login/*, which sends no CORS headers (SPEC §2, DECISIONS 0010).
+    host_permissions: ['https://github.com/*'],
     action: { default_title: 'Open GitSync' },
   },
   vite: () => ({
