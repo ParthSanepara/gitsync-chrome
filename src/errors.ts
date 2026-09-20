@@ -195,3 +195,11 @@ export function describeSyncError(e: SyncError): string {
       return describeApiError(e);
   }
 }
+
+export type BatchError = ApiError | { code: 'too_many_branches'; count: number; limit: number };
+
+export function describeBatchError(e: BatchError): string {
+  return e.code === 'too_many_branches'
+    ? `This repository has ${e.count} branches. Syncing more than ${e.limit} at once could use up the GitHub API budget, so pick a single branch instead.`
+    : describeApiError(e);
+}
