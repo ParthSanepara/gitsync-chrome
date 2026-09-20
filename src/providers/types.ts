@@ -86,3 +86,47 @@ export interface Provider {
   /** Last rate-limit headers seen, for budgeting. */
   rateLimit(): RateLimit | undefined;
 }
+
+export interface TreeWrite {
+  path: string;
+  mode: string;
+  type: 'blob' | 'commit';
+  /** `null` deletes the path. */
+  sha: string | null;
+}
+
+/**
+ * The write side. Only engines get this; the planner is handed a plain `Provider`, so it cannot write
+ * (SPEC §14 rule 4). Every call is serialized by the client (rule 5).
+ */
+export interface WritableProvider extends Provider {
+  /** Base64 content of a blob, whitespace stripped. */
+  readBlob(cred: Credential, repo: RepoRef, sha: string): Promise<Result<string, ApiError>>;
+  /** Returns the blob's sha. Git hashes the content, so it must equal the source blob's sha. */
+  createBlob(cred: Credential, repo: RepoRef, base64: string): Promise<Result<string, ApiError>>;
+  createTree(
+    cred: Credential,
+    repo: RepoRef,
+    entries: TreeWrite[],
+    baseTree?: string,
+  ): Promise<Result<string, ApiError>>;
+  createCommit(
+    cred: Credential,
+    repo: RepoRef,
+    commit: { message: string; treeSha: string; parents: string[] },
+  ): Promise<Result<string, ApiError>>;
+  createRef(cred: Credential, repo: RepoRef, branch: string, sha: string): Promise<Result<void, ApiError>>;
+  updateRef(
+    cred: Credential,
+    repo: RepoRef,
+    branch: string,
+    sha: string,
+    force: boolean,
+  ): Promise<Result<void, ApiError>>;
+  /** Creates the first commit of an empty repository. VERIFY against a real empty repo. */
+  createFirstFile(
+    cred: Credential,
+    repo: RepoRef,
+    file: { path: string; base64: string; message: string },
+  ): Promise<Result<{ commitSha: string; treeSha: string }, ApiError>>;
+}

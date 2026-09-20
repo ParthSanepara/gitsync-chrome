@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { describeApiError } from '@/src/errors';
+import { useRef, useState } from 'react';
+import { describeApiError, describeSyncError } from '@/src/errors';
 import type { HistoryMode, SyncPlan, WriteMode } from '@/src/plan';
 import { buildPlan } from '@/src/planner';
+import { runSync } from '@/src/runner';
 import type { Credential, Repo } from '@/src/providers/types';
 import { provider } from '../provider';
 import { PlanView } from './PlanView';
+import { RunPanel, type RunState } from './RunPanel';
 import { BranchSelect } from './BranchSelect';
 import { RepoPicker } from './RepoPicker';
 
@@ -75,6 +77,8 @@ export function Setup({ credential, onGrantWorkflow }: { credential: Credential;
   const [planned, setPlan] = useState<{ plan: SyncPlan; scopes: string } | undefined>();
   const [planning, setPlanning] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [run, setRun] = useState<RunState>({ status: 'idle' });
+  const abort = useRef<AbortController | null>(null);
 
   // Any change to the inputs invalidates the plan that was shown.
   const edited =
@@ -108,6 +112,43 @@ export function Setup({ credential, onGrantWorkflow }: { credential: Credential;
     setPlanning(false);
     if (res.ok) setPlan({ plan: res.value, scopes: credential.scopes.join(',') });
     else setError(describeApiError(res.error));
+  }
+
+  async function startRun() {
+    if (!plan) return;
+    const controller = new AbortController();
+    abort.current = controller;
+    setRun({ status: 'running' });
+    const res = await runSync(
+      provider,
+      plan,
+      { source: credential, target: credential },
+      (progress) => setRun((prev) => (prev.status === 'running' ? { status: 'running', progress } : prev)),
+      controller.signal,
+    );
+    if (res.ok) setRun({ status: 'done', result: res.value });
+    else if (res.error.code === 'cancelled')
+      setRun({ status: 'failed', message: 'Cancelled. The target branch was not changed.' });
+    else setRun({ status: 'failed', message: describeSyncError(res.error) });
+  }
+
+  // The target moved (or may have), so the old preview no longer describes it.
+  function resetRun() {
+    setRun({ status: 'idle' });
+    setPlan(undefined);
+  }
+
+  if (plan && run.status !== 'idle') {
+    return (
+      <RunPanel
+        plan={plan}
+        run={run}
+        onConfirm={() => void startRun()}
+        onCancel={() => abort.current?.abort()}
+        onBack={() => setRun({ status: 'idle' })}
+        onReset={resetRun}
+      />
+    );
   }
 
   return (
@@ -154,7 +195,7 @@ export function Setup({ credential, onGrantWorkflow }: { credential: Credential;
       >
         {planning ? 'Planning…' : 'Preview sync'}
       </button>
-      {plan && <PlanView plan={plan} onGrantWorkflow={onGrantWorkflow} />}
+      {plan && <PlanView plan={plan} onGrantWorkflow={onGrantWorkflow} onRun={() => setRun({ status: 'confirm' })} />}
     </div>
   );
 }

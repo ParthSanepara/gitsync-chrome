@@ -1,6 +1,7 @@
 import { ok, type ApiError, type EngineId, type PlanBlocker, type PlanWarning, type Result } from '@/src/errors';
 import type { PlanRequest, SyncPlan } from '@/src/plan';
 import type { BranchState, Provider, TreeEntry } from '@/src/providers/types';
+import { diffTrees } from '@/src/treeDiff';
 
 // SPEC §14 rule 4: this file imports Provider, never a concrete client.
 
@@ -160,16 +161,7 @@ async function analyseSnapshot(
     }
     targetEntries = tgtTree.value.entries.filter((e) => e.type !== 'tree');
   }
-  const targetByPath = new Map(targetEntries.map((e) => [e.path, e]));
-  const sourcePaths = new Set(sourceEntries.map((e) => e.path));
-  const targetBlobShas = new Set(targetEntries.filter((e) => e.type === 'blob').map((e) => e.sha));
-
-  const changed = sourceEntries.filter((e) => {
-    const existing = targetByPath.get(e.path);
-    return !existing || existing.sha !== e.sha || existing.mode !== e.mode;
-  });
-  const deleted = targetEntries.filter((e) => !sourcePaths.has(e.path));
-  const toUpload = changed.filter((e) => e.type === 'blob' && !targetBlobShas.has(e.sha));
+  const { changed, deleted, toUpload } = diffTrees(sourceEntries, targetEntries);
 
   if (changed.length + deleted.length === 0) blockers.push({ code: 'already_in_sync' });
 

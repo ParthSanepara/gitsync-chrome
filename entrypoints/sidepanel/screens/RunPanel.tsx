@@ -1,0 +1,107 @@
+import type { SyncResult, Progress } from '@/src/engines/types';
+import type { SyncPlan } from '@/src/plan';
+
+export type RunState =
+  | { status: 'idle' }
+  | { status: 'confirm' }
+  | { status: 'running'; progress?: Progress }
+  | { status: 'done'; result: SyncResult }
+  | { status: 'failed'; message: string };
+
+interface Props {
+  plan: SyncPlan;
+  run: RunState;
+  onConfirm: () => void;
+  onCancel: () => void;
+  onBack: () => void;
+  onReset: () => void;
+}
+
+const primary =
+  'rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900';
+const secondary =
+  'rounded-md border border-slate-400 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800';
+
+export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Props) {
+  const to = `${plan.target.repo.fullName}@${plan.target.branch}`;
+
+  if (run.status === 'confirm') {
+    return (
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold">Confirm</h2>
+        <p className="text-sm">
+          This copies the latest commit of{' '}
+          <strong>
+            {plan.source.repo.fullName}@{plan.source.ref}
+          </strong>{' '}
+          into <strong>{to}</strong> as one new commit.
+        </p>
+        {plan.write === 'force-push' && (
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            Force push is on: the target branch can be overwritten.
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button className={primary} onClick={onConfirm}>
+            Sync now
+          </button>
+          <button className={secondary} onClick={onBack}>
+            Back
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (run.status === 'running') {
+    const p = run.progress;
+    const pct = p && p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
+    return (
+      <section className="flex flex-col gap-3" aria-live="polite">
+        <h2 className="text-sm font-semibold">Syncing to {to}</h2>
+        <div className="h-2 overflow-hidden rounded bg-slate-200 dark:bg-slate-700">
+          <div className="h-full bg-slate-900 dark:bg-slate-100" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="truncate text-xs text-slate-500">{p ? `${p.message} (${p.done}/${p.total})` : 'Starting…'}</p>
+        <button className={secondary + ' self-start'} onClick={onCancel}>
+          Cancel
+        </button>
+        <p className="text-xs text-slate-500">Keep this panel open until it finishes.</p>
+      </section>
+    );
+  }
+
+  if (run.status === 'done') {
+    const url = `https://github.com/${plan.target.repo.fullName}/commit/${run.result.commitSha}`;
+    return (
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-green-700 dark:text-green-400">Synced</h2>
+        <p className="text-sm">
+          {run.result.filesChanged} file(s) changed, {run.result.blobsUploaded} uploaded, in one commit on {to}.
+        </p>
+        <a className={primary + ' text-center'} href={url} target="_blank" rel="noreferrer">
+          View commit {run.result.commitSha.slice(0, 7)}
+        </a>
+        <button className={secondary + ' self-start'} onClick={onReset}>
+          Done
+        </button>
+      </section>
+    );
+  }
+
+  if (run.status === 'failed') {
+    return (
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-red-600 dark:text-red-400">Sync did not finish</h2>
+        <p role="alert" className="text-sm">
+          {run.message}
+        </p>
+        <button className={secondary + ' self-start'} onClick={onReset}>
+          Back
+        </button>
+      </section>
+    );
+  }
+
+  return null;
+}

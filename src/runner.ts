@@ -1,0 +1,22 @@
+import { err, type Result, type SyncError } from '@/src/errors';
+import { treeReplay } from '@/src/engines/treeReplay';
+import type { Progress, SyncResult } from '@/src/engines/types';
+import type { SyncPlan } from '@/src/plan';
+import type { Credential, WritableProvider } from '@/src/providers/types';
+
+/** The only door to the engines: UI calls this and never imports an engine (SPEC §14 rule 3). */
+export function runSync(
+  provider: WritableProvider,
+  plan: SyncPlan,
+  credentials: { source: Credential; target: Credential },
+  onProgress: (p: Progress) => void,
+  signal: AbortSignal,
+): Promise<Result<SyncResult, SyncError>> {
+  switch (plan.engine) {
+    case 'tree-replay':
+      return treeReplay.execute(provider, plan, credentials, onProgress, signal);
+    case 'ref-copy':
+    case 'git-clone':
+      return Promise.resolve(err({ code: 'not_supported', engine: plan.engine }));
+  }
+}

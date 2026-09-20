@@ -4,15 +4,26 @@ import type {
   BranchState,
   Commit,
   Credential,
-  Provider,
   RateLimit,
   Ref,
   Repo,
   RepoRef,
   TreeEntry,
+  TreeWrite,
+  WritableProvider,
 } from '@/src/providers/types';
 import { GitHubClient } from './client';
-import { blobResponse, commitResponse, refListItem, refResponse, repoResponse, treeResponse } from './schemas';
+import {
+  blobResponse,
+  commitResponse,
+  contentsPutResponse,
+  refListItem,
+  refResponse,
+  refWriteResponse,
+  repoResponse,
+  shaResponse,
+  treeResponse,
+} from './schemas';
 
 const seg = encodeURIComponent;
 const commitLookup = commitResponse.pick({ sha: true });
@@ -32,7 +43,7 @@ function toRepo(r: z.infer<typeof repoResponse>): Repo {
   };
 }
 
-export class GitHubProvider implements Provider {
+export class GitHubProvider implements WritableProvider {
   readonly id = 'github' as const;
   readonly host = 'api.github.com';
 
@@ -118,5 +129,84 @@ export class GitHubProvider implements Provider {
 
   rateLimit(): RateLimit | undefined {
     return this.client.rateLimit;
+  }
+
+  async readBlob(cred: Credential, repo: RepoRef, sha: string): Promise<Result<string, ApiError>> {
+    const res = await this.client.get(cred, `${repoPath(repo)}/git/blobs/${seg(sha)}`, blobResponse);
+    if (!res.ok) return res;
+    if (res.value.encoding !== 'base64')
+      return err({ code: 'unexpected_response', detail: `blob encoding ${res.value.encoding}` });
+    return ok(res.value.content.replace(/\s/g, ''));
+  }
+
+  async createBlob(cred: Credential, repo: RepoRef, base64: string): Promise<Result<string, ApiError>> {
+    const res = await this.client.write(
+      cred,
+      'POST',
+      `${repoPath(repo)}/git/blobs`,
+      { content: base64, encoding: 'base64' },
+      shaResponse,
+    );
+    return res.ok ? ok(res.value.sha) : res;
+  }
+
+  async createTree(
+    cred: Credential,
+    repo: RepoRef,
+    entries: TreeWrite[],
+    baseTree?: string,
+  ): Promise<Result<string, ApiError>> {
+    const body = { ...(baseTree ? { base_tree: baseTree } : {}), tree: entries };
+    const res = await this.client.write(cred, 'POST', `${repoPath(repo)}/git/trees`, body, shaResponse);
+    return res.ok ? ok(res.value.sha) : res;
+  }
+
+  async createCommit(
+    cred: Credential,
+    repo: RepoRef,
+    commit: { message: string; treeSha: string; parents: string[] },
+  ): Promise<Result<string, ApiError>> {
+    const body = { message: commit.message, tree: commit.treeSha, parents: commit.parents };
+    const res = await this.client.write(cred, 'POST', `${repoPath(repo)}/git/commits`, body, shaResponse);
+    return res.ok ? ok(res.value.sha) : res;
+  }
+
+  async createRef(cred: Credential, repo: RepoRef, branch: string, sha: string): Promise<Result<void, ApiError>> {
+    const res = await this.client.write(
+      cred,
+      'POST',
+      `${repoPath(repo)}/git/refs`,
+      { ref: `refs/heads/${branch}`, sha },
+      refWriteResponse,
+    );
+    return res.ok ? ok(undefined) : res;
+  }
+
+  async updateRef(
+    cred: Credential,
+    repo: RepoRef,
+    branch: string,
+    sha: string,
+    force: boolean,
+  ): Promise<Result<void, ApiError>> {
+    const path = `${repoPath(repo)}/git/refs/heads/${branch.split('/').map(seg).join('/')}`;
+    const res = await this.client.write(cred, 'PATCH', path, { sha, force }, refWriteResponse);
+    return res.ok ? ok(undefined) : res;
+  }
+
+  async createFirstFile(
+    cred: Credential,
+    repo: RepoRef,
+    file: { path: string; base64: string; message: string },
+  ): Promise<Result<{ commitSha: string; treeSha: string }, ApiError>> {
+    const path = `${repoPath(repo)}/contents/${file.path.split('/').map(seg).join('/')}`;
+    const res = await this.client.write(
+      cred,
+      'PUT',
+      path,
+      { message: file.message, content: file.base64 },
+      contentsPutResponse,
+    );
+    return res.ok ? ok({ commitSha: res.value.commit.sha, treeSha: res.value.commit.tree.sha }) : res;
   }
 }

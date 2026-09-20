@@ -94,3 +94,11 @@ Entry format:
 - Context: SPEC §14 rule 2 keeps long-running work out of the service worker. Login polling lasts up to 15 minutes but only matters while the user is looking at the code.
 - Decision: The side panel runs the device-flow login (request code, poll, fetch identity, store credential). It is an extension page, so it can call `github.com/login/*` under the host permission and write `chrome.storage.session`. No offscreen document is needed for auth.
 - Consequences: Closing the panel cancels an in-progress login. Sync engines still run in the offscreen document. Only `https://github.com/*` is added to `host_permissions`; `api.github.com` sends CORS headers, so its host permission waits for a feature that needs it.
+
+## 0012 — Snapshot sync runs in the side panel for now
+
+- Date: 2026-09-20
+- Status: accepted
+- Context: SPEC §4 runs engines in an offscreen document so a long sync survives the UI closing. The tree-replay engine is REST-only: minutes at most, no heavy memory, and the user is watching the panel.
+- Decision: The side panel calls the runner directly (`src/runner.ts`). The offscreen document arrives with the git-clone engine or scheduled syncs, whichever needs it first. The planner and engines depend only on `Provider`/`WritableProvider` and an `AbortSignal`, so moving them is a change of caller, not of code.
+- Consequences: Closing the panel mid-sync cancels it, and the UI says so. The target branch moves last, so a cancelled run leaves the branch untouched (orphan blobs are harmless). Rule 2 (no long work in the service worker) still holds.

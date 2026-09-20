@@ -151,3 +151,26 @@ export function describePlanWarning(w: PlanWarning): string {
       return 'The repositories do not share history storage, so the instant fork-network copy is not possible.';
   }
 }
+
+/** Raised while executing a plan. Includes every API failure. */
+export type SyncError =
+  | ApiError
+  | { code: 'plan_blocked' }
+  | { code: 'stale_plan' }
+  | { code: 'blob_mismatch'; path: string }
+  | { code: 'not_supported'; engine: EngineId };
+
+export function describeSyncError(e: SyncError): string {
+  switch (e.code) {
+    case 'plan_blocked':
+      return 'This sync has unresolved issues. Preview it again.';
+    case 'stale_plan':
+      return 'The target branch changed after the preview. Nothing was overwritten. Preview again to see the new state.';
+    case 'blob_mismatch':
+      return `${e.path} did not copy intact (the uploaded content hashed differently). Nothing was published.`;
+    case 'not_supported':
+      return `The ${e.engine} engine is not available yet.`;
+    default:
+      return describeApiError(e);
+  }
+}

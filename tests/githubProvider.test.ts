@@ -192,3 +192,88 @@ describe('GitHubProvider planning reads (recorded responses)', () => {
     });
   });
 });
+
+describe('GitHubProvider writes', () => {
+  function writer(response: unknown, status = 201) {
+    const seen: Array<{ url: string; method?: string; body: unknown }> = [];
+    const client = new GitHubClient({
+      fetch: (async (url: string, init?: RequestInit) => {
+        seen.push({ url, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        return new Response(JSON.stringify(response), { status });
+      }) as unknown as typeof fetch,
+      sleep: async () => {},
+      now: () => 0,
+    });
+    return { p: new GitHubProvider(client), seen };
+  }
+
+  it('createBlob posts base64 and returns the sha', async () => {
+    const { p, seen } = writer({ sha: 'abc' });
+    expect(await p.createBlob(cred, repo, 'SGk=')).toEqual({ ok: true, value: 'abc' });
+    expect(seen[0]).toEqual({
+      url: 'https://api.github.com/repos/octocat/Hello-World/git/blobs',
+      method: 'POST',
+      body: { content: 'SGk=', encoding: 'base64' },
+    });
+  });
+
+  it('createTree sends base_tree only when given, and null shas for deletions', async () => {
+    const { p, seen } = writer({ sha: 't1' });
+    await p.createTree(cred, repo, [{ path: 'gone', mode: '100644', type: 'blob', sha: null }], 'base1');
+    await p.createTree(cred, repo, [{ path: 'a', mode: '100644', type: 'blob', sha: 'x' }]);
+    expect(seen[0]?.body).toEqual({
+      base_tree: 'base1',
+      tree: [{ path: 'gone', mode: '100644', type: 'blob', sha: null }],
+    });
+    expect(seen[1]?.body).not.toHaveProperty('base_tree');
+  });
+
+  it('createCommit sends tree and parents', async () => {
+    const { p, seen } = writer({ sha: 'c1' });
+    expect(await p.createCommit(cred, repo, { message: 'm', treeSha: 't', parents: ['p'] })).toEqual({
+      ok: true,
+      value: 'c1',
+    });
+    expect(seen[0]?.body).toEqual({ message: 'm', tree: 't', parents: ['p'] });
+  });
+
+  it('createRef and updateRef target refs/heads/{branch}', async () => {
+    const { p, seen } = writer({ ref: 'refs/heads/x', object: { sha: 's' } });
+    await p.createRef(cred, repo, 'feature/x', 's');
+    await p.updateRef(cred, repo, 'feature/x', 's', true);
+    expect(seen[0]).toMatchObject({
+      method: 'POST',
+      url: expect.stringMatching(/\/git\/refs$/),
+      body: { ref: 'refs/heads/feature/x', sha: 's' },
+    });
+    expect(seen[1]).toMatchObject({
+      method: 'PATCH',
+      url: expect.stringMatching(/\/git\/refs\/heads\/feature\/x$/),
+      body: { sha: 's', force: true },
+    });
+  });
+
+  it('createFirstFile uses the Contents API and returns the commit and tree', async () => {
+    const { p, seen } = writer({ commit: { sha: 'c', tree: { sha: 't' } } });
+    expect(
+      await p.createFirstFile(cred, repo, { path: 'a/b c.txt', base64: 'SGk=', message: 'Initial commit' }),
+    ).toEqual({
+      ok: true,
+      value: { commitSha: 'c', treeSha: 't' },
+    });
+    expect(seen[0]).toMatchObject({ method: 'PUT', url: expect.stringMatching(/\/contents\/a\/b%20c\.txt$/) });
+  });
+
+  it('readBlob strips whitespace from the base64 content', async () => {
+    const { p } = writer({ content: 'SGVs\nbG8=\n', encoding: 'base64', size: 5 }, 200);
+    expect(await p.readBlob(cred, repo, 'x')).toEqual({ ok: true, value: 'SGVsbG8=' });
+  });
+
+  it('surfaces a rejected write as a typed error', async () => {
+    const { p } = writer({ message: 'Protected branch update failed' }, 422);
+    expect(await p.updateRef(cred, repo, 'main', 's', false)).toEqual({
+      ok: false,
+      error: { code: 'validation', message: 'Protected branch update failed' },
+    });
+  });
+});

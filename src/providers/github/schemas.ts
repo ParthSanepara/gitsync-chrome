@@ -73,3 +73,10 @@ export const treeResponse = z.object({
 });
 
 export const blobResponse = z.object({ content: z.string(), encoding: z.string(), size: z.number() });
+
+// Write responses. VERIFY each against a real call; they follow GitHub's documented Git Database API.
+export const shaResponse = z.object({ sha: z.string() });
+export const refWriteResponse = z.object({ ref: z.string(), object: z.object({ sha: z.string() }) });
+export const contentsPutResponse = z.object({
+  commit: z.object({ sha: z.string(), tree: z.object({ sha: z.string() }) }),
+});
