@@ -56,7 +56,7 @@ export function Auth({ state, onSignIn, onCancel, onSignOut }: Props) {
       return (
         <section className="flex flex-col gap-2">
           <p className="text-sm">
-            Signed in as <strong>{state.login}</strong>
+            Signed in as <strong>{state.credential.login}</strong>
           </p>
           <button className={linkButton + ' self-start'} onClick={onSignOut}>
             Sign out

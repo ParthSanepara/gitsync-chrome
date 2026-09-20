@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import { Auth } from './screens/Auth';
+import { Setup } from './screens/Setup';
 import { useAuth } from './useAuth';
 
 export function App() {
@@ -13,6 +14,7 @@ export function App() {
         <p className="text-sm text-slate-600 dark:text-slate-400">Sync branches between GitHub repositories.</p>
       </header>
       <Auth state={state} onSignIn={() => void signIn()} onCancel={cancel} onSignOut={() => void signOut()} />
+      {state.status === 'signed-in' && <Setup credential={state.credential} />}
       <p className="mt-auto text-xs text-slate-500">v{version}</p>
     </main>
   );

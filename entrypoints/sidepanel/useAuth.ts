@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { clearCredentials, loadCredentials } from '@/src/auth/store';
 import { signInWithGitHub } from '@/src/auth/login';
 import type { DeviceCode } from '@/src/auth/device';
+import type { Credential } from '@/src/providers/types';
 import { describeAuthError } from '@/src/errors';
 
 export type AuthState =
@@ -9,26 +10,26 @@ export type AuthState =
   | { status: 'signed-out'; error?: string }
   | { status: 'requesting-code' }
   | { status: 'waiting'; userCode: string; verificationUri: string }
-  | { status: 'signed-in'; login: string };
+  | { status: 'signed-in'; credential: Credential };
 
 type Action =
-  | { type: 'loaded'; login: string | undefined }
+  | { type: 'loaded'; credential: Credential | undefined }
   | { type: 'requesting' }
   | { type: 'code'; code: DeviceCode }
-  | { type: 'signed-in'; login: string }
+  | { type: 'signed-in'; credential: Credential }
   | { type: 'failed'; error?: string }
   | { type: 'signed-out' };
 
 function reducer(_: AuthState, action: Action): AuthState {
   switch (action.type) {
     case 'loaded':
-      return action.login ? { status: 'signed-in', login: action.login } : { status: 'signed-out' };
+      return action.credential ? { status: 'signed-in', credential: action.credential } : { status: 'signed-out' };
     case 'requesting':
       return { status: 'requesting-code' };
     case 'code':
       return { status: 'waiting', userCode: action.code.userCode, verificationUri: action.code.verificationUri };
     case 'signed-in':
-      return { status: 'signed-in', login: action.login };
+      return { status: 'signed-in', credential: action.credential };
     case 'failed':
       return { status: 'signed-out', error: action.error };
     case 'signed-out':
@@ -42,7 +43,7 @@ export function useAuth() {
 
   useEffect(() => {
     loadCredentials()
-      .then((all) => dispatch({ type: 'loaded', login: Object.values(all)[0]?.login }))
+      .then((all) => dispatch({ type: 'loaded', credential: Object.values(all)[0] }))
       .catch(() => dispatch({ type: 'failed', error: 'Could not read saved sign-in.' }));
     return () => abort.current?.abort();
   }, []);
@@ -54,7 +55,7 @@ export function useAuth() {
     dispatch({ type: 'requesting' });
 
     const result = await signInWithGitHub((code) => dispatch({ type: 'code', code }), controller.signal);
-    if (result.ok) dispatch({ type: 'signed-in', login: result.value.login });
+    if (result.ok) dispatch({ type: 'signed-in', credential: result.value });
     else if (result.error.code === 'cancelled') dispatch({ type: 'signed-out' });
     else dispatch({ type: 'failed', error: describeAuthError(result.error) });
   }, []);
