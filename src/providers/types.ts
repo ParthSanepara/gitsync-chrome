@@ -42,6 +42,24 @@ export interface Commit {
   parents: string[];
 }
 
+export interface RateLimit {
+  remaining: number;
+  /** Epoch ms. */
+  resetAt: number;
+}
+
+export interface TreeEntry {
+  path: string;
+  /** Git file mode, e.g. 100644, 100755, 040000, 160000 (submodule). */
+  mode: string;
+  type: 'blob' | 'tree' | 'commit';
+  sha: string;
+  /** Bytes. Present for blobs. */
+  size?: number;
+}
+
+export type BranchState = { state: 'exists'; sha: string } | { state: 'missing' } | { state: 'empty-repo' };
+
 /** Read side of a git host. Write methods arrive with the engines that need them (SPEC §5). */
 export interface Provider {
   id: ProviderId;
@@ -52,4 +70,19 @@ export interface Provider {
   getRepo(cred: Credential, repo: RepoRef): Promise<Result<Repo, ApiError>>;
   listRefs(cred: Credential, repo: RepoRef): Promise<Result<Ref[], ApiError>>;
   resolveRef(cred: Credential, repo: RepoRef, ref: string): Promise<Result<Commit, ApiError>>;
+  getBranch(cred: Credential, repo: RepoRef, branch: string): Promise<Result<BranchState, ApiError>>;
+  /** Whole tree, recursive. `truncated` means the host cut it off. */
+  getTree(
+    cred: Credential,
+    repo: RepoRef,
+    sha: string,
+  ): Promise<Result<{ entries: TreeEntry[]; truncated: boolean }, ApiError>>;
+  readBlobText(cred: Credential, repo: RepoRef, sha: string): Promise<Result<string, ApiError>>;
+  /**
+   * Can a ref in `repo` point at this commit? True across a fork network, where the object is shared.
+   * A probe, not an assumption (SPEC §8.1).
+   */
+  canReachCommit(cred: Credential, repo: RepoRef, sha: string): Promise<Result<boolean, ApiError>>;
+  /** Last rate-limit headers seen, for budgeting. */
+  rateLimit(): RateLimit | undefined;
 }

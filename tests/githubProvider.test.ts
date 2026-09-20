@@ -108,3 +108,87 @@ describe('GitHubProvider (recorded responses)', () => {
     expect(urls).toEqual([]);
   });
 });
+
+import refFx from './fixtures/octocat-hello-world.ref.json';
+import treeFx from './fixtures/octocat-hello-world.tree.json';
+import blobFx from './fixtures/octocat-hello-world.blob.json';
+
+describe('GitHubProvider planning reads (recorded responses)', () => {
+  const treeSha = 'b4eecafa9be2f2006ce1b709d6857b07069b4608';
+
+  it('getBranch returns the tip sha', async () => {
+    const { p } = provider({ '/git/ref/heads/master': refFx });
+    expect(await p.getBranch(cred, repo, 'master')).toEqual({
+      ok: true,
+      value: { state: 'exists', sha: '7fd1a60b01f91b314f59955a4e4d4e80d8edf11d' },
+    });
+  });
+
+  it('getBranch reports a missing branch as data, not an error', async () => {
+    const { p } = provider({});
+    expect(await p.getBranch(cred, repo, 'nope')).toEqual({ ok: true, value: { state: 'missing' } });
+  });
+
+  it('getBranch reports an empty repository', async () => {
+    const client = new GitHubClient({
+      // VERIFY: the exact 409 body against a real empty repo.
+      fetch: (async () =>
+        new Response(JSON.stringify({ message: 'Git Repository is empty.' }), {
+          status: 409,
+        })) as unknown as typeof fetch,
+      sleep: async () => {},
+      now: () => 0,
+    });
+    expect(await new GitHubProvider(client).getBranch(cred, repo, 'main')).toEqual({
+      ok: true,
+      value: { state: 'empty-repo' },
+    });
+  });
+
+  it('getTree returns entries with modes and sizes', async () => {
+    const { p, urls } = provider({ [`/git/trees/${treeSha}?recursive=1`]: treeFx });
+    expect(await p.getTree(cred, repo, treeSha)).toEqual({
+      ok: true,
+      value: {
+        truncated: false,
+        entries: [
+          { path: 'README', mode: '100644', type: 'blob', sha: '980a0d5f19a64b4b30a87d4206aade58726b60e3', size: 13 },
+        ],
+      },
+    });
+    expect(urls[0]).toContain('recursive=1');
+  });
+
+  it('readBlobText decodes base64 content', async () => {
+    const { p } = provider({ '/git/blobs/980a0d5f19a64b4b30a87d4206aade58726b60e3': blobFx });
+    expect(await p.readBlobText(cred, repo, '980a0d5f19a64b4b30a87d4206aade58726b60e3')).toEqual({
+      ok: true,
+      value: 'Hello World!\n',
+    });
+  });
+
+  it('canReachCommit is true on 200 and false on 404 (the fork-network probe)', async () => {
+    const yes = provider({ '/git/commits/7fd1a60b01f91b314f59955a4e4d4e80d8edf11d': commitFx });
+    expect(await yes.p.canReachCommit(cred, repo, '7fd1a60b01f91b314f59955a4e4d4e80d8edf11d')).toEqual({
+      ok: true,
+      value: true,
+    });
+    const no = provider({});
+    expect(await no.p.canReachCommit(cred, repo, '0000000000000000000000000000000000000001')).toEqual({
+      ok: true,
+      value: false,
+    });
+  });
+
+  it('canReachCommit passes real failures through', async () => {
+    const client = new GitHubClient({
+      fetch: (async () => new Response('{}', { status: 401 })) as unknown as typeof fetch,
+      sleep: async () => {},
+      now: () => 0,
+    });
+    expect(await new GitHubProvider(client).canReachCommit(cred, repo, 'x')).toEqual({
+      ok: false,
+      error: { code: 'unauthorized' },
+    });
+  });
+});

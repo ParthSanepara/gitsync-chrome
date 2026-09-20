@@ -56,3 +56,20 @@ export const commitResponse = z.object({
   commit: z.object({ message: z.string(), tree: z.object({ sha: z.string() }) }),
   parents: z.array(z.object({ sha: z.string() })),
 });
+
+export const refResponse = z.object({ object: z.object({ sha: z.string() }) });
+
+export const treeResponse = z.object({
+  truncated: z.boolean(),
+  tree: z.array(
+    z.object({
+      path: z.string(),
+      mode: z.string(),
+      type: z.enum(['blob', 'tree', 'commit']),
+      sha: z.string(),
+      size: z.number().optional(),
+    }),
+  ),
+});
+
+export const blobResponse = z.object({ content: z.string(), encoding: z.string(), size: z.number() });

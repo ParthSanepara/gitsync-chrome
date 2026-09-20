@@ -74,3 +74,80 @@ export function describeApiError(e: ApiError): string {
       return `Unexpected response from GitHub: ${e.detail}`;
   }
 }
+
+export type EngineId = 'ref-copy' | 'tree-replay' | 'git-clone';
+
+/** Detected while planning. Any blocker disables Execute (SPEC §7, §9). */
+export type PlanBlocker =
+  | { code: 'target_archived' }
+  | { code: 'no_push_permission' }
+  | { code: 'same_branch' }
+  | { code: 'already_in_sync' }
+  | { code: 'tree_truncated' }
+  | { code: 'oversize_blob'; path: string; sizeBytes: number; limitBytes: number }
+  | { code: 'lfs_detected'; path: string }
+  | { code: 'missing_workflow_scope'; paths: string[] }
+  | { code: 'rate_budget'; needed: number; remaining: number; resetAt: number }
+  | { code: 'needs_force' }
+  | { code: 'engine_unavailable'; engine: EngineId }
+  | { code: 'unsupported'; what: 'last-n' | 'pull-request' };
+
+export type PlanWarning =
+  | { code: 'submodules'; count: number }
+  | { code: 'sha_not_preserved' }
+  | { code: 'target_branch_created' }
+  | { code: 'target_repo_empty' }
+  | { code: 'write_access_unverified' }
+  | { code: 'fork_probe_failed' };
+
+const mb = (bytes: number) => `${(bytes / 1e6).toFixed(1)} MB`;
+
+export function describePlanBlocker(b: PlanBlocker): string {
+  switch (b.code) {
+    case 'target_archived':
+      return 'The target repository is archived, so it is read-only.';
+    case 'no_push_permission':
+      return 'Your account does not have write access to the target repository.';
+    case 'same_branch':
+      return 'Source and target are the same branch.';
+    case 'already_in_sync':
+      return 'The target already matches the source. Nothing to sync.';
+    case 'tree_truncated':
+      return 'The source has too many files for GitHub to list in one request. Latest-commit sync cannot handle it.';
+    case 'oversize_blob':
+      return `${b.path} is ${mb(b.sizeBytes)}, over the ${mb(b.limitBytes)} limit.`;
+    case 'lfs_detected':
+      return `${b.path} uses Git LFS. Syncing would copy pointer files without the real content, so it is blocked.`;
+    case 'missing_workflow_scope':
+      return `This sync changes ${b.paths.length} workflow file(s) under .github/workflows. Sign in again and grant the "workflow" permission.`;
+    case 'rate_budget':
+      return `This sync needs about ${b.needed} API calls but only ${b.remaining} remain. The limit resets at ${new Date(b.resetAt).toLocaleTimeString()}.`;
+    case 'needs_force':
+      return 'The target branch already exists. Pointing it at the source history rewrites it, so choose force push.';
+    case 'engine_unavailable':
+      return b.engine === 'git-clone'
+        ? 'Full history between repositories that are not forks of each other is not available yet.'
+        : `The ${b.engine} engine is not available yet.`;
+    case 'unsupported':
+      return b.what === 'last-n'
+        ? 'Last-N-commits sync is not available yet.'
+        : 'Opening a pull request instead is not available yet.';
+  }
+}
+
+export function describePlanWarning(w: PlanWarning): string {
+  switch (w.code) {
+    case 'submodules':
+      return `${w.count} submodule(s) are copied as links only. The target must add the submodule content itself.`;
+    case 'sha_not_preserved':
+      return 'The new commit will have a different SHA than the source commit.';
+    case 'target_branch_created':
+      return 'The target branch does not exist and will be created.';
+    case 'target_repo_empty':
+      return 'The target repository is empty, so the first commit needs a special path.';
+    case 'write_access_unverified':
+      return 'GitHub did not say whether you can write to the target. The sync will fail if you cannot.';
+    case 'fork_probe_failed':
+      return 'The repositories do not share history storage, so the instant fork-network copy is not possible.';
+  }
+}

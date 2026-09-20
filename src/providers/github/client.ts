@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import { err, ok, type ApiError, type Result } from '@/src/errors';
-import type { Credential } from '@/src/providers/types';
+import type { Credential, RateLimit } from '@/src/providers/types';
 
 const API = 'https://api.github.com';
 const MAX_CONCURRENT_READS = 4; // SPEC §8.2
@@ -19,12 +19,6 @@ export const defaultClientDeps: ClientDeps = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now: () => Date.now(),
 };
-
-export interface RateLimit {
-  remaining: number;
-  /** Epoch ms. */
-  resetAt: number;
-}
 
 interface Raw {
   data: unknown;

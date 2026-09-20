@@ -1,10 +1,21 @@
 import type { z } from 'zod';
 import { err, ok, type ApiError, type Result } from '@/src/errors';
-import type { Commit, Credential, Provider, Ref, Repo, RepoRef } from '@/src/providers/types';
+import type {
+  BranchState,
+  Commit,
+  Credential,
+  Provider,
+  RateLimit,
+  Ref,
+  Repo,
+  RepoRef,
+  TreeEntry,
+} from '@/src/providers/types';
 import { GitHubClient } from './client';
-import { commitResponse, refListItem, repoResponse } from './schemas';
+import { blobResponse, commitResponse, refListItem, refResponse, repoResponse, treeResponse } from './schemas';
 
 const seg = encodeURIComponent;
+const commitLookup = commitResponse.pick({ sha: true });
 const repoPath = (r: RepoRef) => `/repos/${seg(r.owner)}/${seg(r.name)}`;
 
 function toRepo(r: z.infer<typeof repoResponse>): Repo {
@@ -65,5 +76,47 @@ export class GitHubProvider implements Provider {
       message: c.commit.message,
       parents: c.parents.map((p) => p.sha),
     });
+  }
+
+  async getBranch(cred: Credential, repo: RepoRef, branch: string): Promise<Result<BranchState, ApiError>> {
+    const path = `${repoPath(repo)}/git/ref/heads/${branch.split('/').map(seg).join('/')}`;
+    const res = await this.client.get(cred, path, refResponse);
+    if (res.ok) return ok({ state: 'exists', sha: res.value.object.sha });
+    if (res.error.code === 'not_found') return ok({ state: 'missing' });
+    // VERIFY against a real empty repo: SPEC §9 says this is a 409 "Git Repository is empty".
+    if (res.error.code === 'conflict' && /empty/i.test(res.error.message)) return ok({ state: 'empty-repo' });
+    return res;
+  }
+
+  async getTree(cred: Credential, repo: RepoRef, sha: string) {
+    const res = await this.client.get(cred, `${repoPath(repo)}/git/trees/${seg(sha)}?recursive=1`, treeResponse);
+    if (!res.ok) return res;
+    const entries: TreeEntry[] = res.value.tree.map((t) => ({
+      path: t.path,
+      mode: t.mode,
+      type: t.type,
+      sha: t.sha,
+      size: t.size,
+    }));
+    return ok({ entries, truncated: res.value.truncated });
+  }
+
+  async readBlobText(cred: Credential, repo: RepoRef, sha: string): Promise<Result<string, ApiError>> {
+    const res = await this.client.get(cred, `${repoPath(repo)}/git/blobs/${seg(sha)}`, blobResponse);
+    if (!res.ok) return res;
+    if (res.value.encoding !== 'base64')
+      return err({ code: 'unexpected_response', detail: `blob encoding ${res.value.encoding}` });
+    const bytes = Uint8Array.from(atob(res.value.content.replace(/\s/g, '')), (c) => c.charCodeAt(0));
+    return ok(new TextDecoder().decode(bytes));
+  }
+
+  async canReachCommit(cred: Credential, repo: RepoRef, sha: string): Promise<Result<boolean, ApiError>> {
+    const res = await this.client.get(cred, `${repoPath(repo)}/git/commits/${seg(sha)}`, commitLookup);
+    if (res.ok) return ok(true);
+    return res.error.code === 'not_found' ? ok(false) : res;
+  }
+
+  rateLimit(): RateLimit | undefined {
+    return this.client.rateLimit;
   }
 }
