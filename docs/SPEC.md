@@ -29,6 +29,7 @@ preview requires.
 | Target | any repo the user can write, existing branch or new branch |
 | History | latest commit only (squashed) · last N commits · full history |
 | Write | direct push · force push · open a pull request instead |
+| Branches | one branch · every branch of the repository |
 | Scope | whole tree · path include/exclude globs · subdirectory remap |
 
 The **user chooses the history mode**. The extension chooses the *engine* that
@@ -550,8 +551,8 @@ generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
 ### M3 — Polish
 - [ ] Saved sync profiles, one-click re-run
 - [ ] Path filters and subdirectory remap
-- [ ] PR mode
-- [ ] Full error taxonomy with actionable messages
+- [x] PR mode
+- [~] Full error taxonomy with actionable messages (protected branch, secret scanning, branch-name conflicts, empty repo done; the rest as found)
 - [ ] `lastN` and `full` modes wired to their engines
 - [ ] Content script Sync button
 

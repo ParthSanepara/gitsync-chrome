@@ -51,6 +51,9 @@ export function PlanView({
               <Row label="Data to upload" value={fmtBytes(e.bytes)} />
             </>
           )}
+          {plan.pullRequest && (
+            <Row label="Pull request" value={`${plan.pullRequest.head} → ${plan.pullRequest.base}`} />
+          )}
           <Row label="Commits created" value={e.commits} />
           <Row label="GitHub API calls" value={`~${e.apiCalls}`} />
         </dl>

@@ -45,10 +45,42 @@ VERIFY against a real empty repo before relying on it.
 
 Submodules (mode 160000) are copied as gitlinks. Commit SHAs differ from the source.
 
-## ref-copy (not built yet)
+## ref-copy
 
-`POST` or `PATCH` a ref in the target to a commit that only exists in the source, valid across a fork network.
-One call. Needs a real fork to verify.
+Full history across a fork network: point a target branch at a commit that only exists in the source.
+
+1. Re-read the target branch. If it moved since planning, stop with `stale_plan`.
+2. Probe again that the target can reach the source commit (`GET git/commits/{sha}` on the target: 200 means
+   yes). If not, stop with `commit_unreachable`. The probe is the actual precondition, not the fork metadata.
+3. Missing branch: `POST git/refs`. Existing branch: `PATCH git/refs/heads/{branch}` with `force` when the plan
+   says so. Moving a branch onto unrelated history is not a fast-forward, so the planner requires force push
+   (`needs_force`), except for a pull-request work branch, which is ours to move.
+
+One write, no blobs, no new commit. VERIFY against a real fork before relying on it.
+
+## Pull-request mode (either engine)
+
+For protected branches, or when the change should be reviewed. The plan's `target.branch` is a work branch
+`gitsync/<source ref>` and `pullRequest` is `{ base, head }`.
+
+- The base branch must exist (`pr_base_missing` otherwise) and is never written.
+- A missing work branch starts from the base, so the PR diff is only what differs.
+- After the branch is updated, `POST pulls`. If one is already open for the branch (a second run), reuse it.
+- If the branch updated but the PR failed, say so (`pr_failed`): the branch is already changed.
+
+## Whole repository (`src/batch.ts`)
+
+Not an engine: it runs the engines once per branch. Every source branch (default branch first, at most 100) is
+planned against the same-named target branch. Running is sequential, and **each branch is planned again just
+before it runs**: syncing `main` moves the tip that later new branches start from. A blocked branch is skipped
+with its reason, a failed branch does not stop the others, and an expired login or rate limit stops the run.
+Tags are not synced. Branches that exist only in the target are never deleted.
+
+## Refused writes
+
+GitHub's refusals are mapped to what the user can do about them (`src/engines/shared.ts`): a protected branch
+points to pull-request mode, and secret scanning shows GitHub's explanation and says it cannot be bypassed. The
+message patterns are VERIFY items.
 
 ## git-clone (not built yet, gated on M0)
 

@@ -30,11 +30,33 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold">Confirm</h2>
         <p className="text-sm">
-          This copies the latest commit of{' '}
-          <strong>
-            {plan.source.repo.fullName}@{plan.source.ref}
-          </strong>{' '}
-          into <strong>{to}</strong> as one new commit.
+          {plan.pullRequest ? (
+            <>
+              This copies{' '}
+              <strong>
+                {plan.source.repo.fullName}@{plan.source.ref}
+              </strong>{' '}
+              to the branch <strong>{plan.pullRequest.head}</strong> in {plan.target.repo.fullName} and opens a pull
+              request into <strong>{plan.pullRequest.base}</strong>. <code>{plan.pullRequest.base}</code> is not
+              changed.
+            </>
+          ) : plan.engine === 'ref-copy' ? (
+            <>
+              This points <strong>{to}</strong> at the latest commit of{' '}
+              <strong>
+                {plan.source.repo.fullName}@{plan.source.ref}
+              </strong>
+              , keeping its full history.
+            </>
+          ) : (
+            <>
+              This copies the latest commit of{' '}
+              <strong>
+                {plan.source.repo.fullName}@{plan.source.ref}
+              </strong>{' '}
+              into <strong>{to}</strong> as one new commit{plan.target.exists ? '' : ', on a new branch'}.
+            </>
+          )}
         </p>
         {plan.write === 'force-push' && (
           <p className="text-sm text-amber-700 dark:text-amber-400">
@@ -77,9 +99,21 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-green-700 dark:text-green-400">Synced</h2>
         <p className="text-sm">
-          {run.result.filesChanged} file(s) changed, {run.result.blobsUploaded} uploaded, in one commit on {to}.
+          {plan.engine === 'ref-copy'
+            ? `${to} now points at the source commit.`
+            : `${run.result.filesChanged} file(s) changed, ${run.result.blobsUploaded} uploaded, in one commit on ${to}.`}
         </p>
-        <a className={primary + ' text-center'} href={url} target="_blank" rel="noreferrer">
+        {run.result.pullRequestUrl && (
+          <a className={primary + ' text-center'} href={run.result.pullRequestUrl} target="_blank" rel="noreferrer">
+            Open the pull request
+          </a>
+        )}
+        <a
+          className={run.result.pullRequestUrl ? secondary + ' text-center' : primary + ' text-center'}
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+        >
           View commit {run.result.commitSha.slice(0, 7)}
         </a>
         <button className={secondary + ' self-start'} onClick={onReset}>

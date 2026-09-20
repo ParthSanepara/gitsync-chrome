@@ -118,3 +118,11 @@ Entry format:
 - Context: Session storage is cleared when the browser closes, so the user signed in again on every restart.
 - Decision: Store the credential in `chrome.storage.local` with an absolute 7-day expiry. Drop it on: expiry, a missing or implausible expiry, malformed data, GitHub answering 401, a different account or scopes reported on open, an extension update, or sign out. Uninstalling deletes the storage.
 - Consequences: The token now sits on disk unencrypted. Anything with access to the browser profile can read it, and it carries `workflow` (0013). Detection is limited to the checks above. There is no way to notice "unwanted activity" on GitHub from inside the extension, and no revoke call without a client secret, so a user who suspects misuse must revoke at github.com/settings/applications. `chrome.storage.sync` stays forbidden.
+
+## 0015 — Whole-repository sync is a batch of per-branch syncs
+
+- Date: 2026-09-20
+- Status: accepted
+- Context: Users want to sync a whole repository, not one branch at a time.
+- Decision: "Entire repository" lists the source's branches and runs the existing per-branch plan and engines once per branch, into the same-named target branch. Each branch is planned again right before it runs. Tags are not synced and nothing is deleted from the target. New branches start from the target's default branch (or the PR base), not as parentless commits. Pull-request mode is single-branch only.
+- Consequences: No new engine, so no new place for the two paths to disagree. The cost is API calls: every branch is planned twice, so a cap of 100 branches applies. A sync interrupted midway leaves some branches done, and running it again finishes the rest (finished branches report "up to date").
