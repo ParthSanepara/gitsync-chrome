@@ -20,7 +20,8 @@ Where results show up:
 
 ## What you need
 
-- A fine-grained PAT. For the target repo it needs Contents: read & write and Metadata: read. For exp 5 it also needs Contents: write on your fork.
+- For exp 0: an OAuth App with Device Flow enabled, and its `client_id`. Exp 0 saves the token like a PAT, so exps 2-5 can then run on it. Compare with a PAT if a push fails.
+- A fine-grained PAT (optional if you use exp 0). For the target repo it needs Contents: read & write and Metadata: read. For exp 5 it also needs Contents: write on your fork.
   Set it under Credentials. It is kept in `chrome.storage.session` only.
 - A fresh empty throwaway repo as the target, e.g. `you/gitsync-spike-target`.
 - A small public repo to clone (exp 1/2) and a ~50 MB one (exp 3).
@@ -30,6 +31,7 @@ Where results show up:
 
 | # | Button | Pass condition |
 |---|---|---|
+| 0 | Log in with GitHub | Code request returns 200 from an extension context (no CORS block), polling ends with a token, `apiUser.status: 200`. Note whether `slowDownSeen` and the `grantedScope` |
 | 1 | Clone only | `pass: true`, no CORS or network error |
 | 2 | Clone + push (small repo) | `push.ok: true`. On auth failure, switch the onAuth form and retry |
 | 3 | Clone + push (~50 MB repo) | Record `cloneSeconds`, `pushSeconds`, `metrics.peakJsHeapMB`, `metrics.storageUsageMB`. Also note the offscreen doc's memory in Chrome Task Manager (Shift+Esc) |

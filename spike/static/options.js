@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['srcUrl', 'srcRef', 'tgtRepo', 'tgtBranch', 'blobSizes', 'upstream', 'upstreamBranch', 'fork', 'control', 'authForm'];
+const FIELDS = ['srcUrl', 'srcRef', 'tgtRepo', 'tgtBranch', 'blobSizes', 'upstream', 'upstreamBranch', 'fork', 'control', 'authForm', 'clientId', 'scope'];
 
 function log(line) {
   const el = $('log');
@@ -53,6 +53,12 @@ chrome.runtime.onMessage.addListener((msg) => {
       lastProgressLog = Date.now();
       log(`  … ${msg.text}`);
     }
+  } else if (msg.type === 'deviceCode') {
+    $('deviceCode').textContent = `Enter ${msg.userCode} at ${msg.verificationUri}`;
+    window.open(msg.verificationUri, '_blank');
+  } else if (msg.type === 'tokenSaved') {
+    $('deviceCode').textContent = '';
+    refreshPatState();
   } else if (msg.type === 'log') {
     log(msg.text);
   } else if (msg.type === 'result') {

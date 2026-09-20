@@ -16,6 +16,8 @@ type Params = {
   fork: string;
   control: string;
   authForm: 'username' | 'x-access-token';
+  clientId: string;
+  scope: string;
 };
 
 type RunMessage = { to: 'offscreen'; type: 'run'; exp: string; params: Params; token: string };
@@ -257,6 +259,73 @@ async function expRefCopy(p: Params, token: string) {
   return { ...out, pass: verifiedSha === sha };
 }
 
+// ---------- exp 0: device flow ----------
+
+const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
+
+async function githubForm(url: string, body: Record<string, string>) {
+  const t0 = performance.now();
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body),
+  });
+  const text = await res.text();
+  let json: Record<string, unknown> | undefined;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // Non-JSON body; keep the status and snippet below.
+  }
+  return { status: res.status, ms: Math.round(performance.now() - t0), json, snippet: text.slice(0, 200) };
+}
+
+async function expDeviceFlow(p: Params) {
+  if (!p.clientId) throw new Error('client_id required');
+  const out: Record<string, unknown> = {};
+
+  const code = await githubForm('https://github.com/login/device/code', { client_id: p.clientId, scope: p.scope || 'repo' });
+  out.codeRequest = { status: code.status, ms: code.ms, error: code.json?.error ?? undefined };
+  const c = code.json as { device_code: string; user_code: string; verification_uri: string; expires_in: number; interval: number } | undefined;
+  if (code.status !== 200 || !c?.device_code) return { ...out, pass: false, note: 'no device code', snippet: code.snippet };
+
+  send({ type: 'deviceCode', userCode: c.user_code, verificationUri: c.verification_uri });
+  log(`enter code ${c.user_code} at ${c.verification_uri}`);
+
+  let interval = c.interval;
+  const deadline = Date.now() + c.expires_in * 1000;
+  const polls: string[] = [];
+  let token: string | undefined;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, interval * 1000));
+    const r = await githubForm('https://github.com/login/oauth/access_token', {
+      client_id: p.clientId,
+      device_code: c.device_code,
+      grant_type: DEVICE_GRANT,
+    });
+    const j = r.json as { access_token?: string; scope?: string; error?: string; interval?: number } | undefined;
+    if (j?.access_token) {
+      token = j.access_token;
+      out.grantedScope = j.scope;
+      polls.push('access_token');
+      break;
+    }
+    polls.push(j?.error ?? `http ${r.status}`);
+    progress(`waiting for approval (${polls.length} polls, last: ${polls.at(-1)})`);
+    if (j?.error === 'slow_down') interval = j.interval ?? interval + 5;
+    else if (j?.error !== 'authorization_pending') return { ...out, pass: false, polls, note: `stopped on ${j?.error}` };
+  }
+  out.polls = polls;
+  out.slowDownSeen = polls.includes('slow_down');
+  if (!token) return { ...out, pass: false, note: 'expired before approval' };
+
+  currentToken = token;
+  chrome.runtime.sendMessage({ to: 'sw', type: 'saveToken', token }).catch(() => {});
+  const me = await rest(token, 'GET', '/user');
+  out.apiUser = { status: me.status, login: (me.json as { login?: string } | undefined)?.login };
+  return { ...out, pass: me.status === 200, note: 'token saved to session; experiments 2-5 now use it' };
+}
+
 // ---------- dispatch ----------
 
 let busy = false;
@@ -273,8 +342,9 @@ chrome.runtime.onMessage.addListener((msg: RunMessage) => {
   (async () => {
     let result: unknown;
     try {
-      if (!token && exp !== 'clone') throw new Error('no PAT set');
-      if (exp === 'clone') result = await expClone(params, token, false);
+      if (!token && exp !== 'clone' && exp !== 'deviceFlow') throw new Error('no PAT set');
+      if (exp === 'deviceFlow') result = await expDeviceFlow(params);
+      else if (exp === 'clone') result = await expClone(params, token, false);
       else if (exp === 'clonePush') result = await expClone(params, token, true);
       else if (exp === 'blobCeiling') result = await expBlobCeiling(params, token);
       else if (exp === 'refCopy') result = await expRefCopy(params, token);

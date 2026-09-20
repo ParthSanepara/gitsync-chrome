@@ -29,6 +29,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'saveToken') {
+    // Device flow result from offscreen, which has no chrome.storage.
+    chrome.storage.session.set({ pat: msg.token });
+    chrome.runtime.sendMessage({ to: 'ui', type: 'tokenSaved' }).catch(() => {});
+    return;
+  }
+
   if (msg.type === 'ping') {
     sendResponse({ swBootedAt: BOOTED_AT });
   }
