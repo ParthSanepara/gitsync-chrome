@@ -52,4 +52,19 @@ describe('signInWithGitHub', () => {
     await clearCredentials();
     expect(await loadCredentials()).toEqual({});
   });
+
+  it('requests the scope it is given, and stores the broader token under the same key', async () => {
+    const bodies: string[] = [];
+    const deps = fakeDeps(json({ login: 'octo', id: 1 }));
+    const inner = deps.fetch;
+    deps.fetch = (async (url: string, init?: RequestInit) => {
+      bodies.push(String(init?.body));
+      return inner(url, init);
+    }) as unknown as typeof fetch;
+
+    // The token that comes back says it holds both scopes.
+    const res = await signInWithGitHub(() => {}, new AbortController().signal, deps, 'repo workflow');
+    expect(new URLSearchParams(bodies[0]).get('scope')).toBe('repo workflow');
+    expect(res.ok).toBe(true);
+  });
 });

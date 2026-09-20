@@ -67,12 +67,12 @@ function targetProblem(source: Side, target: Side): string | undefined {
 const select =
   'w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800';
 
-export function Setup({ credential }: { credential: Credential }) {
+export function Setup({ credential, onGrantWorkflow }: { credential: Credential; onGrantWorkflow: () => void }) {
   const [source, setSourceRaw] = useState<Side>({});
   const [target, setTargetRaw] = useState<Side>({});
   const [mode, setModeRaw] = useState<HistoryMode>('snapshot');
   const [write, setWriteRaw] = useState<WriteMode>('push');
-  const [plan, setPlan] = useState<SyncPlan | undefined>();
+  const [planned, setPlan] = useState<{ plan: SyncPlan; scopes: string } | undefined>();
   const [planning, setPlanning] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
@@ -89,6 +89,8 @@ export function Setup({ credential }: { credential: Credential }) {
   const setMode = edited(setModeRaw);
   const setWrite = edited(setWriteRaw);
 
+  // A plan made with different permissions is stale (e.g. right after granting `workflow`).
+  const plan = planned && planned.scopes === credential.scopes.join(',') ? planned.plan : undefined;
   const problem = targetProblem(source, target);
   const ready = source.repo && source.ref && target.repo && target.ref && !problem;
 
@@ -104,7 +106,7 @@ export function Setup({ credential }: { credential: Credential }) {
       credentials: { source: credential, target: credential },
     });
     setPlanning(false);
-    if (res.ok) setPlan(res.value);
+    if (res.ok) setPlan({ plan: res.value, scopes: credential.scopes.join(',') });
     else setError(describeApiError(res.error));
   }
 
@@ -152,7 +154,7 @@ export function Setup({ credential }: { credential: Credential }) {
       >
         {planning ? 'Planning…' : 'Preview sync'}
       </button>
-      {plan && <PlanView plan={plan} />}
+      {plan && <PlanView plan={plan} onGrantWorkflow={onGrantWorkflow} />}
     </div>
   );
 }

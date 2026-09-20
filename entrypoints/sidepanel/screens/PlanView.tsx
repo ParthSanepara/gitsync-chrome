@@ -12,7 +12,7 @@ function Row({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-export function PlanView({ plan }: { plan: SyncPlan }) {
+export function PlanView({ plan, onGrantWorkflow }: { plan: SyncPlan; onGrantWorkflow: () => void }) {
   const { estimate: e } = plan;
   const isCopy = plan.engine === 'ref-copy';
   return (
@@ -54,6 +54,15 @@ export function PlanView({ plan }: { plan: SyncPlan }) {
             <li key={i}>{describePlanBlocker(b)}</li>
           ))}
         </ul>
+      )}
+
+      {plan.blockers.some((b) => b.code === 'missing_workflow_scope') && (
+        <button
+          onClick={onGrantWorkflow}
+          className="rounded-md border border-slate-400 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          Grant workflow permission
+        </button>
       )}
 
       {plan.warnings.length > 0 && (

@@ -58,6 +58,11 @@ export function Auth({ state, onSignIn, onCancel, onSignOut }: Props) {
           <p className="text-sm">
             Signed in as <strong>{state.credential.login}</strong>
           </p>
+          {state.notice && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {state.notice}
+            </p>
+          )}
           <button className={linkButton + ' self-start'} onClick={onSignOut}>
             Sign out
           </button>

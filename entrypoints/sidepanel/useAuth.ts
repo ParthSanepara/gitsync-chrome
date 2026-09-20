@@ -8,30 +8,39 @@ import { describeAuthError } from '@/src/errors';
 export type AuthState =
   | { status: 'loading' }
   | { status: 'signed-out'; error?: string }
-  | { status: 'requesting-code' }
-  | { status: 'waiting'; userCode: string; verificationUri: string }
-  | { status: 'signed-in'; credential: Credential };
+  /** `previous` is set when an already signed-in user is asking for more permissions. */
+  | { status: 'requesting-code'; previous?: Credential }
+  | { status: 'waiting'; userCode: string; verificationUri: string; previous?: Credential }
+  | { status: 'signed-in'; credential: Credential; notice?: string };
 
 type Action =
   | { type: 'loaded'; credential: Credential | undefined }
-  | { type: 'requesting' }
+  | { type: 'requesting'; previous?: Credential }
   | { type: 'code'; code: DeviceCode }
   | { type: 'signed-in'; credential: Credential }
-  | { type: 'failed'; error?: string }
+  | { type: 'failed'; error?: string; previous?: Credential }
   | { type: 'signed-out' };
 
-function reducer(_: AuthState, action: Action): AuthState {
+function reducer(state: AuthState, action: Action): AuthState {
   switch (action.type) {
     case 'loaded':
       return action.credential ? { status: 'signed-in', credential: action.credential } : { status: 'signed-out' };
     case 'requesting':
-      return { status: 'requesting-code' };
+      return { status: 'requesting-code', previous: action.previous };
     case 'code':
-      return { status: 'waiting', userCode: action.code.userCode, verificationUri: action.code.verificationUri };
+      return {
+        status: 'waiting',
+        userCode: action.code.userCode,
+        verificationUri: action.code.verificationUri,
+        previous: state.status === 'requesting-code' ? state.previous : undefined,
+      };
     case 'signed-in':
       return { status: 'signed-in', credential: action.credential };
     case 'failed':
-      return { status: 'signed-out', error: action.error };
+      // Failing to add permissions must not sign the user out.
+      return action.previous
+        ? { status: 'signed-in', credential: action.previous, notice: action.error }
+        : { status: 'signed-out', error: action.error };
     case 'signed-out':
       return { status: 'signed-out' };
   }
@@ -48,16 +57,22 @@ export function useAuth() {
     return () => abort.current?.abort();
   }, []);
 
-  const signIn = useCallback(async () => {
+  const signIn = useCallback(async (options?: { scope?: string; previous?: Credential }) => {
     abort.current?.abort();
     const controller = new AbortController();
     abort.current = controller;
-    dispatch({ type: 'requesting' });
+    dispatch({ type: 'requesting', previous: options?.previous });
 
-    const result = await signInWithGitHub((code) => dispatch({ type: 'code', code }), controller.signal);
+    const result = await signInWithGitHub(
+      (code) => dispatch({ type: 'code', code }),
+      controller.signal,
+      undefined,
+      options?.scope,
+    );
     if (result.ok) dispatch({ type: 'signed-in', credential: result.value });
-    else if (result.error.code === 'cancelled') dispatch({ type: 'signed-out' });
-    else dispatch({ type: 'failed', error: describeAuthError(result.error) });
+    else if (result.error.code === 'cancelled') {
+      dispatch(options?.previous ? { type: 'failed', previous: options.previous } : { type: 'signed-out' });
+    } else dispatch({ type: 'failed', error: describeAuthError(result.error), previous: options?.previous });
   }, []);
 
   const cancel = useCallback(() => abort.current?.abort(), []);
