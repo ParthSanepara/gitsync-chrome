@@ -86,3 +86,11 @@ Entry format:
 - Context: On GitHub's free plan, private repos cannot use rulesets or branch protection, or GitHub Pages. Plan 0002 assumed both.
 - Decision: Keep the repo private. Branch rules on `main` are conventions, not enforced. The privacy policy is published as a public Gist instead of GitHub Pages.
 - Consequences: CI still runs on every PR, but merging with failing checks is technically possible, so don't. Revisit when the repo goes public or the plan is upgraded. The `docs/RELEASING.md` §A.2 and §D steps then switch back.
+
+## 0010 — GitHub login (OAuth App device flow) is the primary auth, built first
+
+- Date: 2026-09-20
+- Status: accepted
+- Context: The goal is to connect with a GitHub login and get read/write access from the account, instead of asking users for PATs. Standard OAuth needs a client secret, which an extension cannot hold. Fine-grained PATs are per-owner (SPEC §6.1). SPEC had device flow at M5 and PAT as the v1 method.
+- Decision: Use OAuth App device flow as the default auth from the first sync UI. Request `repo`, and `workflow` only when a sync touches workflow files. The `client_id` is public and committed. PAT stays as a fallback. Tokens stay in `chrome.storage.session`. A GitHub App was considered and rejected for now: it needs a per-account or per-org install step.
+- Consequences: Device flow needs the `https://github.com/*` host permission from the first login, so it is added to the published manifest. Existing installs see a new-permission prompt, so add it while the item is unlisted with few users. Orgs with app restrictions need owner approval. `repo` is coarse. Users log in again after a browser restart. SPEC §6, §11, §12 and §15 updated. M0 gains a device flow experiment. Adding the permission also means updating `docs/RELEASING.md` (CLAUDE.md rule).
