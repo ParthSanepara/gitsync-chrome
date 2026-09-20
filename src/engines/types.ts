@@ -16,6 +16,8 @@ export interface SyncResult {
   commitSha: string;
   filesChanged: number;
   blobsUploaded: number;
+  /** Set in pull-request mode. */
+  pullRequestUrl?: string;
 }
 
 export interface Engine {

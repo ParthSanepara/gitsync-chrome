@@ -80,3 +80,5 @@ export const refWriteResponse = z.object({ ref: z.string(), object: z.object({ s
 export const contentsPutResponse = z.object({
   commit: z.object({ sha: z.string(), tree: z.object({ sha: z.string() }) }),
 });
+
+export const pullRequestResponse = z.object({ html_url: z.string() });

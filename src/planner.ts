@@ -1,5 +1,6 @@
 import { ok, type ApiError, type EngineId, type PlanBlocker, type PlanWarning, type Result } from '@/src/errors';
 import type { PlanRequest, SyncPlan } from '@/src/plan';
+import { branchNameConflict, prBranchName } from '@/src/gitRefs';
 import type { BranchState, Provider, TreeEntry } from '@/src/providers/types';
 import { diffTrees } from '@/src/treeDiff';
 
@@ -25,15 +26,36 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
   const commit = await provider.resolveRef(credentials.source, source.repo, source.ref);
   if (!commit.ok) return commit;
 
-  const branch = await provider.getBranch(credentials.target, target.repo, target.branch);
+  // In pull-request mode the sync goes to a work branch and a PR merges it into `target.branch`.
+  const isPr = req.write === 'pull-request';
+  const workBranch = isPr ? prBranchName(source.ref) : target.branch;
+
+  if (isPr) {
+    const prBase = await provider.getBranch(credentials.target, target.repo, target.branch);
+    if (!prBase.ok) return prBase;
+    if (prBase.value.state !== 'exists') blockers.push({ code: 'pr_base_missing' });
+  }
+
+  const branch = await provider.getBranch(credentials.target, target.repo, workBranch);
   if (!branch.ok) return branch;
 
-  // A new branch starts from the target's default branch (shared history, fewer uploads).
+  // A new branch starts from the PR base, or else the target's default branch (shared history, fewer uploads).
   let startFrom: { branch: string; sha: string } | undefined;
-  if (branch.value.state === 'missing' && target.repo.defaultBranch !== target.branch) {
-    const def = await provider.getBranch(credentials.target, target.repo, target.repo.defaultBranch);
-    if (!def.ok) return def;
-    if (def.value.state === 'exists') startFrom = { branch: target.repo.defaultBranch, sha: def.value.sha };
+  const startName = isPr ? target.branch : target.repo.defaultBranch;
+  if (branch.value.state === 'missing' && startName !== workBranch) {
+    const start = await provider.getBranch(credentials.target, target.repo, startName);
+    if (!start.ok) return start;
+    if (start.value.state === 'exists') startFrom = { branch: startName, sha: start.value.sha };
+  }
+
+  if (branch.value.state === 'missing') {
+    const refs = await provider.listRefs(credentials.target, target.repo);
+    if (!refs.ok) return refs;
+    const clash = branchNameConflict(
+      workBranch,
+      refs.value.filter((r) => r.kind === 'branch').map((r) => r.name),
+    );
+    if (clash) blockers.push({ code: 'branch_name_conflict', existing: clash });
   }
 
   addTargetChecks(req, branch.value, startFrom, blockers, warnings);
@@ -65,13 +87,11 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
     engineReason = `Replaying ${req.n} commits through the API is slow, so a real git clone is used.`;
   }
 
-  if (req.write === 'pull-request') blockers.push({ code: 'unsupported', what: 'pull-request' });
-
   const base = {
     source: { repo: source.repo, ref: source.ref, commit: commit.value },
     target: {
       repo: target.repo,
-      branch: target.branch,
+      branch: workBranch,
       exists: branch.value.state === 'exists',
       currentSha: branch.value.state === 'exists' ? branch.value.sha : undefined,
       empty: branch.value.state === 'empty-repo',
@@ -80,6 +100,7 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
     mode: req.mode,
     n: req.n,
     write: req.write,
+    pullRequest: isPr ? { base: target.branch, head: workBranch } : undefined,
     engine,
     engineReason,
   };
@@ -88,7 +109,7 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
   if (engine === 'ref-copy') {
     if (branch.value.state === 'exists') {
       if (branch.value.sha === commit.value.sha) blockers.push({ code: 'already_in_sync' });
-      else if (req.write !== 'force-push') blockers.push({ code: 'needs_force' });
+      else if (req.write === 'push') blockers.push({ code: 'needs_force' }); // a PR head branch is ours to move
     }
     return ok(finish(provider, { ...base, estimate: { ...zero, apiCalls: 1 }, warnings, blockers }));
   }

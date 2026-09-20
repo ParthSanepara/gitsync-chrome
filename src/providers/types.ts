@@ -129,4 +129,18 @@ export interface WritableProvider extends Provider {
     repo: RepoRef,
     file: { path: string; base64: string; message: string },
   ): Promise<Result<{ commitSha: string; treeSha: string }, ApiError>>;
+
+  /** Opens a pull request `head` → `base` in `repo`. VERIFY the request and response shapes. */
+  openPullRequest(
+    cred: Credential,
+    repo: RepoRef,
+    pr: { title: string; body: string; head: string; base: string },
+  ): Promise<Result<{ url: string }, ApiError>>;
+  /** The open PR for `head` → `base`, if there is one. */
+  findOpenPullRequest(
+    cred: Credential,
+    repo: RepoRef,
+    head: string,
+    base: string,
+  ): Promise<Result<{ url: string } | undefined, ApiError>>;
 }

@@ -219,13 +219,6 @@ describe('target and request checks', () => {
     expect(codes(p.blockers)).toEqual([]);
   });
 
-  it('blocks pull-request mode until it exists', async () => {
-    expect((await plan(world(), request({ write: 'pull-request' }))).blockers).toContainEqual({
-      code: 'unsupported',
-      what: 'pull-request',
-    });
-  });
-
   it('blocks when the API budget is too low, using the client-reported limit', async () => {
     const p = await plan(world({ rate: { remaining: 50, resetAt: 1_700_000_000_000 } }));
     expect(p.blockers).toContainEqual({ code: 'rate_budget', needed: 7, remaining: 50, resetAt: 1_700_000_000_000 });
@@ -317,5 +310,48 @@ describe('creating a branch that does not exist yet', () => {
     w.trees.tgtTree = { entries: w.trees.srcTree?.entries ?? [] };
     // The new branch would be identical to main: nothing to commit.
     expect(codes((await plan(w, feature())).blockers)).toEqual(['already_in_sync']);
+  });
+});
+
+describe('branch names that cannot coexist', () => {
+  const withBranches = (names: string[]) => {
+    const p = fake(world());
+    p.listRefs = async () => ok(names.map((name) => ({ name, kind: 'branch' as const, sha: 'x' })));
+    return p;
+  };
+  const build = (provider: Provider, branch: string) =>
+    buildPlan(provider, request({ target: { repo: repo('me/dst'), branch } }));
+
+  it('blocks "feature" when "feature/x" already exists, and the reverse', async () => {
+    const a = await build(withBranches(['main', 'feature/x']), 'feature');
+    expect(a.ok && a.value.blockers).toContainEqual({ code: 'branch_name_conflict', existing: 'feature/x' });
+    const b = await build(withBranches(['main', 'feature']), 'feature/x');
+    expect(b.ok && b.value.blockers).toContainEqual({ code: 'branch_name_conflict', existing: 'feature' });
+  });
+
+  it('allows sibling names', async () => {
+    const r = await build(withBranches(['main', 'feature/x']), 'feature/y');
+    expect(r.ok && r.value.blockers).toEqual([]);
+  });
+
+  it('does not check names for a branch that already exists', async () => {
+    const p = withBranches(['main', 'main/oops']);
+    const r = await buildPlan(p, request());
+    expect(r.ok && codes(r.value.blockers)).not.toContain('branch_name_conflict');
+  });
+});
+
+describe('pull-request planning', () => {
+  it('plans against the work branch and never against the base', async () => {
+    const p = await plan(world(), request({ write: 'pull-request' }));
+    expect(p.target.branch).toBe('gitsync/main');
+    expect(p.pullRequest).toEqual({ base: 'main', head: 'gitsync/main' });
+    expect(codes(p.blockers)).toEqual([]);
+    expect(p.estimate.filesChanged).toBe(3); // vs the base branch tip
+  });
+
+  it('blocks when the base branch does not exist', async () => {
+    const p = await plan(world({ branches: {} }), request({ write: 'pull-request' }));
+    expect(codes(p.blockers)).toContain('pr_base_missing');
   });
 });

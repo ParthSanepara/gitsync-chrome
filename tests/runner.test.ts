@@ -4,7 +4,7 @@ import { runSync } from '@/src/runner';
 import type { WritableProvider } from '@/src/providers/types';
 
 describe('runSync', () => {
-  it.each(['ref-copy', 'git-clone'] as const)('says %s is not available yet instead of running it', async (engine) => {
+  it.each(['git-clone'] as const)('says %s is not available yet instead of running it', async (engine) => {
     const res = await runSync(
       {} as WritableProvider,
       { engine, blockers: [] } as unknown as SyncPlan,

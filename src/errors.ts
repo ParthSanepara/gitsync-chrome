@@ -89,8 +89,10 @@ export type PlanBlocker =
   | { code: 'missing_workflow_scope'; paths: string[] }
   | { code: 'rate_budget'; needed: number; remaining: number; resetAt: number }
   | { code: 'needs_force' }
+  | { code: 'pr_base_missing' }
+  | { code: 'branch_name_conflict'; existing: string }
   | { code: 'engine_unavailable'; engine: EngineId }
-  | { code: 'unsupported'; what: 'last-n' | 'pull-request' };
+  | { code: 'unsupported'; what: 'last-n' };
 
 export type PlanWarning =
   | { code: 'submodules'; count: number }
@@ -124,6 +126,10 @@ export function describePlanBlocker(b: PlanBlocker): string {
       return `This sync needs about ${b.needed} API calls but only ${b.remaining} remain. The limit resets at ${new Date(b.resetAt).toLocaleTimeString()}.`;
     case 'needs_force':
       return 'The target branch already exists. Pointing it at the source history rewrites it, so choose force push.';
+    case 'pr_base_missing':
+      return 'A pull request needs the target branch to exist already, because that is what it merges into.';
+    case 'branch_name_conflict':
+      return `The branch name conflicts with the existing branch "${b.existing}". Git cannot have both "a" and "a/b".`;
     case 'engine_unavailable':
       return b.engine === 'git-clone'
         ? 'Full history between repositories that are not forks of each other is not available yet.'
@@ -160,7 +166,12 @@ export type SyncError =
   | { code: 'plan_blocked' }
   | { code: 'stale_plan' }
   | { code: 'blob_mismatch'; path: string }
-  | { code: 'not_supported'; engine: EngineId };
+  | { code: 'not_supported'; engine: EngineId }
+  | { code: 'commit_unreachable' }
+  | { code: 'protected_branch' }
+  | { code: 'secret_scanning'; message: string }
+  /** The branch was updated but opening the pull request failed. */
+  | { code: 'pr_failed'; message: string };
 
 export function describeSyncError(e: SyncError): string {
   switch (e.code) {
@@ -172,6 +183,14 @@ export function describeSyncError(e: SyncError): string {
       return `${e.path} did not copy intact (the uploaded content hashed differently). Nothing was published.`;
     case 'not_supported':
       return `The ${e.engine} engine is not available yet.`;
+    case 'commit_unreachable':
+      return 'The target can no longer see the source commit, so the fork-network copy is not possible. Preview again.';
+    case 'protected_branch':
+      return 'The target branch is protected, so GitHub refused the update. Choose "Open a pull request", or sync to a different branch.';
+    case 'secret_scanning':
+      return `GitHub blocked this because it found what looks like a secret (push protection). It cannot be bypassed from here. ${e.message}`;
+    case 'pr_failed':
+      return `The branch was updated, but the pull request could not be opened: ${e.message}`;
     default:
       return describeApiError(e);
   }

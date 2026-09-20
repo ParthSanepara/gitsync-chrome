@@ -4,6 +4,7 @@ import { treeReplay } from '@/src/engines/treeReplay';
 import type { Progress } from '@/src/engines/types';
 import type { PlanRequest, SyncPlan } from '@/src/plan';
 import { buildPlan } from '@/src/planner';
+import { runSync } from '@/src/runner';
 import type {
   BranchState,
   Commit,
@@ -54,6 +55,11 @@ class Sim implements WritableProvider {
   /** A real empty repo answers "empty" for any branch until its first commit. */
   emptyDst = false;
   failCreateBlob: ApiError | undefined;
+  failRefWrite: ApiError | undefined;
+  failPr: ApiError | undefined;
+  reachable = false;
+  prs: Array<{ head: string; base: string; title: string; body: string }> = [];
+  existingPr: { url: string } | undefined;
   corruptBlobs = false;
   onCreateBlob: (() => void) | undefined;
   rate = undefined;
@@ -88,7 +94,7 @@ class Sim implements WritableProvider {
     return t ? ok({ entries: t, truncated: false }) : err({ code: 'not_found' } as ApiError);
   };
   readBlobText = async () => ok('');
-  canReachCommit = async () => ok(false);
+  canReachCommit = async () => ok(this.reachable);
   rateLimit = () => this.rate;
 
   readBlob = async (_c: Credential, _r: unknown, sha: string) => {
@@ -136,6 +142,7 @@ class Sim implements WritableProvider {
     sha: string,
   ): Promise<Result<void, ApiError>> => {
     this.log.push('createRef');
+    if (this.failRefWrite) return err(this.failRefWrite);
     this.refWrites.push({ kind: 'create', branch, sha });
     this.branches[`${r.owner}/${r.name}#${branch}`] = { state: 'exists', sha };
     return ok(undefined);
@@ -148,6 +155,7 @@ class Sim implements WritableProvider {
     force: boolean,
   ): Promise<Result<void, ApiError>> => {
     this.log.push('updateRef');
+    if (this.failRefWrite) return err(this.failRefWrite);
     this.refWrites.push({ kind: 'update', branch, sha, force });
     this.branches[`${r.owner}/${r.name}#${branch}`] = { state: 'exists', sha };
     return ok(undefined);
@@ -164,6 +172,18 @@ class Sim implements WritableProvider {
     this.branches[`${r.owner}/${r.name}#main`] = { state: 'exists', sha };
     return ok({ commitSha: sha, treeSha: `tree_${sha}` });
   };
+
+  openPullRequest = async (
+    _c: Credential,
+    _r: unknown,
+    pr: { title: string; body: string; head: string; base: string },
+  ): Promise<Result<{ url: string }, ApiError>> => {
+    this.log.push('openPullRequest');
+    if (this.failPr) return err(this.failPr);
+    this.prs.push(pr);
+    return ok({ url: `https://github.com/me/dst/pull/${this.prs.length}` });
+  };
+  findOpenPullRequest = async (): Promise<Result<{ url: string } | undefined, ApiError>> => ok(this.existingPr);
 
   targetTreeOf(branch = 'main'): TreeEntry[] {
     const b = this.branches[`me/dst#${branch}`];
@@ -203,7 +223,7 @@ async function planFor(sim: Sim, req = request()): Promise<SyncPlan> {
 }
 
 const run = (sim: Sim, plan: SyncPlan, signal = new AbortController().signal, progress: Progress[] = []) =>
-  treeReplay.execute(sim, plan, { source: cred, target: cred }, (p) => progress.push(p), signal);
+  runSync(sim, plan, { source: cred, target: cred }, (p) => progress.push(p), signal);
 
 describe('treeReplay.execute', () => {
   it('makes the target tree equal to the source tree, uploading only what changed', async () => {
@@ -293,7 +313,14 @@ describe('treeReplay.execute', () => {
   it('refuses to run an engine the plan did not pick', async () => {
     const sim = scenario();
     const plan = { ...(await planFor(sim)), engine: 'ref-copy' as const };
-    expect(await run(sim, plan)).toEqual({ ok: false, error: { code: 'not_supported', engine: 'ref-copy' } });
+    const res = await treeReplay.execute(
+      sim,
+      plan,
+      { source: cred, target: cred },
+      () => {},
+      new AbortController().signal,
+    );
+    expect(res).toEqual({ ok: false, error: { code: 'not_supported', engine: 'ref-copy' } });
   });
 
   it('aborts on a hash mismatch and publishes nothing', async () => {
@@ -368,5 +395,128 @@ describe('treeReplay.execute: a new branch', () => {
     expect(sim.refWrites[0]).toMatchObject({ kind: 'create', branch: 'feature/x' });
     expect(sim.commitsMade[0]?.parents).toHaveLength(1);
     expect(byPath(sim.targetTreeOf('feature/x'))).toEqual(byPath(sim.trees['tree_src1'] ?? []));
+  });
+});
+
+describe('protected branches and secret scanning', () => {
+  it('reports a protected branch as its own problem, with the way out', async () => {
+    const sim = scenario();
+    const plan = await planFor(sim);
+    sim.failRefWrite = { code: 'validation', message: 'Protected branch update failed for refs/heads/main.' };
+    expect(await run(sim, plan)).toEqual({ ok: false, error: { code: 'protected_branch' } });
+  });
+
+  it("reports secret scanning, keeping GitHub's explanation", async () => {
+    const sim = scenario();
+    const plan = await planFor(sim);
+    sim.failCreateBlob = { code: 'conflict', message: 'Secret detected: GH013 push protection.' };
+    expect(await run(sim, plan)).toEqual({
+      ok: false,
+      error: { code: 'secret_scanning', message: 'Secret detected: GH013 push protection.' },
+    });
+  });
+});
+
+describe('pull-request mode', () => {
+  const pr = (over: Partial<PlanRequest> = {}) => request({ write: 'pull-request', ...over });
+
+  it('syncs to a gitsync/ work branch created from the base, then opens a PR into the base', async () => {
+    const sim = scenario();
+    const plan = await planFor(sim, pr());
+    expect(plan.target.branch).toBe('gitsync/main');
+    expect(plan.pullRequest).toEqual({ base: 'main', head: 'gitsync/main' });
+    expect(plan.target.base).toEqual({ branch: 'main', sha: 'tgt1' });
+
+    const res = await run(sim, plan);
+    expect(res).toMatchObject({ ok: true, value: { pullRequestUrl: 'https://github.com/me/dst/pull/1' } });
+    expect(sim.branches['me/dst#main']).toEqual({ state: 'exists', sha: 'tgt1' }); // base untouched
+    expect(sim.refWrites[0]).toMatchObject({ kind: 'create', branch: 'gitsync/main' });
+    expect(sim.commitsMade[0]?.parents).toEqual(['tgt1']);
+    expect(sim.prs[0]).toMatchObject({ head: 'gitsync/main', base: 'main', title: 'Sync me/src@main' });
+    expect(sim.log.at(-1)).toBe('openPullRequest');
+  });
+
+  it('reuses the work branch and the open PR on a second run', async () => {
+    const sim = scenario();
+    await run(sim, await planFor(sim, pr()));
+    sim.addCommit('src2', [file('a.txt', 'A'), file('b.txt', 'B3')]);
+    sim.branches['me/src#main'] = { state: 'exists', sha: 'src2' };
+    sim.failPr = { code: 'validation', message: 'A pull request already exists for me:gitsync/main.' };
+    sim.existingPr = { url: 'https://github.com/me/dst/pull/9' };
+
+    const plan = await planFor(sim, pr());
+    expect(plan.target.exists).toBe(true); // updates gitsync/main
+    const res = await run(sim, plan);
+    expect(res).toMatchObject({ ok: true, value: { pullRequestUrl: 'https://github.com/me/dst/pull/9' } });
+    expect(sim.refWrites.at(-1)).toMatchObject({ kind: 'update', branch: 'gitsync/main' });
+  });
+
+  it('needs the base branch to exist', async () => {
+    const sim = scenario({ target: 'missing' });
+    expect((await planFor(sim, pr())).blockers).toContainEqual({ code: 'pr_base_missing' });
+  });
+
+  it('says so when the branch was updated but the PR failed', async () => {
+    const sim = scenario();
+    const plan = await planFor(sim, pr());
+    sim.failPr = { code: 'validation', message: 'No commits between main and gitsync/main' };
+    expect(await run(sim, plan)).toEqual({
+      ok: false,
+      error: { code: 'pr_failed', message: 'No commits between main and gitsync/main' },
+    });
+    expect(sim.refWrites).toHaveLength(1);
+  });
+});
+
+describe('ref-copy engine', () => {
+  const full = (over: Partial<PlanRequest> = {}) => request({ mode: 'full', ...over });
+
+  it('creates a missing branch at the source commit with a single ref write', async () => {
+    const sim = scenario({ target: 'missing' });
+    sim.reachable = true;
+    const plan = await planFor(sim, full());
+    expect(plan.engine).toBe('ref-copy');
+    const res = await run(sim, plan);
+    expect(res).toMatchObject({ ok: true, value: { commitSha: 'src1', blobsUploaded: 0 } });
+    expect(sim.refWrites).toEqual([{ kind: 'create', branch: 'main', sha: 'src1' }]);
+    expect(sim.log).not.toContain('createBlob');
+    expect(sim.log).not.toContain('createCommit');
+  });
+
+  it('moves an existing branch only with force push, and passes force', async () => {
+    const sim = scenario();
+    sim.reachable = true;
+    expect((await planFor(sim, full())).blockers).toContainEqual({ code: 'needs_force' });
+    const plan = await planFor(sim, full({ write: 'force-push' }));
+    expect((await run(sim, plan)).ok).toBe(true);
+    expect(sim.refWrites).toEqual([{ kind: 'update', branch: 'main', sha: 'src1', force: true }]);
+  });
+
+  it('refuses if the target moved after the preview', async () => {
+    const sim = scenario();
+    sim.reachable = true;
+    const plan = await planFor(sim, full({ write: 'force-push' }));
+    sim.addCommit('tgt2', []);
+    sim.branches['me/dst#main'] = { state: 'exists', sha: 'tgt2' };
+    expect(await run(sim, plan)).toEqual({ ok: false, error: { code: 'stale_plan' } });
+    expect(sim.refWrites).toEqual([]);
+  });
+
+  it('refuses if the commit is no longer reachable from the target', async () => {
+    const sim = scenario({ target: 'missing' });
+    sim.reachable = true;
+    const plan = await planFor(sim, full());
+    sim.reachable = false;
+    expect(await run(sim, plan)).toEqual({ ok: false, error: { code: 'commit_unreachable' } });
+  });
+
+  it('opens a PR from a work branch it may force-move', async () => {
+    const sim = scenario();
+    sim.reachable = true;
+    const plan = await planFor(sim, full({ write: 'pull-request' }));
+    expect(plan.blockers).toEqual([]);
+    const res = await run(sim, plan);
+    expect(res).toMatchObject({ ok: true, value: { pullRequestUrl: expect.stringContaining('/pull/') } });
+    expect(sim.refWrites[0]).toMatchObject({ kind: 'create', branch: 'gitsync/main', sha: 'src1' });
   });
 });

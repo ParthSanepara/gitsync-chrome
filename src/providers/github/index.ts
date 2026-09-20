@@ -17,6 +17,7 @@ import {
   blobResponse,
   commitResponse,
   contentsPutResponse,
+  pullRequestResponse,
   refListItem,
   refResponse,
   refWriteResponse,
@@ -208,5 +209,28 @@ export class GitHubProvider implements WritableProvider {
       contentsPutResponse,
     );
     return res.ok ? ok({ commitSha: res.value.commit.sha, treeSha: res.value.commit.tree.sha }) : res;
+  }
+
+  async openPullRequest(
+    cred: Credential,
+    repo: RepoRef,
+    pr: { title: string; body: string; head: string; base: string },
+  ): Promise<Result<{ url: string }, ApiError>> {
+    const res = await this.client.write(cred, 'POST', `${repoPath(repo)}/pulls`, pr, pullRequestResponse);
+    return res.ok ? ok({ url: res.value.html_url }) : res;
+  }
+
+  async findOpenPullRequest(
+    cred: Credential,
+    repo: RepoRef,
+    head: string,
+    base: string,
+  ): Promise<Result<{ url: string } | undefined, ApiError>> {
+    // The head filter needs `owner:branch`, and for a same-repo PR the owner is the repo owner.
+    const query = `state=open&base=${seg(base)}&head=${seg(`${repo.owner}:${head}`)}`;
+    const res = await this.client.getAll(cred, `${repoPath(repo)}/pulls?${query}`, pullRequestResponse, 1);
+    if (!res.ok) return res;
+    const first = res.value[0];
+    return ok(first ? { url: first.html_url } : undefined);
   }
 }

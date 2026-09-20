@@ -33,6 +33,8 @@ export interface SyncPlan {
   mode: HistoryMode;
   n?: number;
   write: WriteMode;
+  /** Pull-request mode syncs to `head` (a work branch, `target.branch`) and opens a PR into `base`. */
+  pullRequest?: { base: string; head: string };
   engine: EngineId;
   /** Shown verbatim in the preview. */
   engineReason: string;

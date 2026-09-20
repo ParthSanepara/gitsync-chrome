@@ -13,3 +13,14 @@ export function branchNameProblem(name: string): string | undefined {
   if (name.endsWith('.')) return 'Branch names cannot end with ".".';
   return undefined;
 }
+
+/** The branch a pull-request sync pushes to. Namespaced so it never collides with the user's own branches. */
+export const prBranchName = (sourceRef: string) => `gitsync/${sourceRef}`;
+
+/**
+ * Git stores branches as files, so `feature` and `feature/x` cannot both exist. Returns the existing branch
+ * that blocks `name`, if any.
+ */
+export function branchNameConflict(name: string, existing: string[]): string | undefined {
+  return existing.find((e) => e !== name && (e.startsWith(`${name}/`) || name.startsWith(`${e}/`)));
+}

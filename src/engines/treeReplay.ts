@@ -1,4 +1,5 @@
 import { err, ok, type Result, type SyncError } from '@/src/errors';
+import { failed, mapWriteError, openPullRequestIfNeeded } from '@/src/engines/shared';
 import type { Engine, Progress, SyncResult } from '@/src/engines/types';
 import type { SyncPlan } from '@/src/plan';
 import { TREE_CHUNK } from '@/src/planner';
@@ -107,7 +108,7 @@ async function run(
       if (!content.ok) return void (failure ??= content.error);
       if (signal.aborted) return;
       const sha = await provider.createBlob(tCred, target.repo, content.value);
-      if (!sha.ok) return void (failure ??= sha.error);
+      if (!sha.ok) return void (failure ??= mapWriteError(sha.error));
       // Git is content-addressed: anything else means the copy is not the file we read.
       if (sha.value !== entry.sha) return void (failure ??= { code: 'blob_mismatch', path: entry.path });
       say('uploading', ++uploaded, toUpload.length, `Uploaded ${entry.path}`);
@@ -143,7 +144,7 @@ async function run(
       writes.slice(i * TREE_CHUNK, (i + 1) * TREE_CHUNK),
       treeSha,
     );
-    if (!created.ok) return created;
+    if (!created.ok) return failed(created.error);
     treeSha = created.value;
     if (signal.aborted) return err(cancelled);
   }
@@ -157,7 +158,7 @@ async function run(
     treeSha,
     parents: tipSha ? [tipSha] : [],
   });
-  if (!commit.ok) return commit;
+  if (!commit.ok) return failed(commit.error);
   if (signal.aborted) return err(cancelled);
 
   // 4. Move the branch. Last, so a failure earlier leaves the target untouched.
@@ -165,8 +166,16 @@ async function run(
   const moved = branchExists
     ? await provider.updateRef(tCred, target.repo, target.branch, commit.value, plan.write === 'force-push')
     : await provider.createRef(tCred, target.repo, target.branch, commit.value);
-  if (!moved.ok) return moved;
+  if (!moved.ok) return failed(moved.error);
+
+  const pr = await openPullRequestIfNeeded(provider, plan, tCred);
+  if (!pr.ok) return pr;
 
   say('updating-branch', 1, 1, 'Done');
-  return ok({ commitSha: commit.value, filesChanged: changed.length + deleted.length, blobsUploaded: toUpload.length });
+  return ok({
+    commitSha: commit.value,
+    filesChanged: changed.length + deleted.length,
+    blobsUploaded: toUpload.length,
+    pullRequestUrl: pr.value,
+  });
 }
