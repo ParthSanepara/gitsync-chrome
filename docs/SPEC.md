@@ -533,7 +533,7 @@ Added 2026-09-17. Precedes M0.
 
 - [ ] WXT + React + TS + Tailwind scaffold on the §10 layout, `sidePanel` permission only
 - [ ] CI: format, lint, typecheck, test, build, zip, production-bundle check
-- [ ] release-please → tag → zip on GitHub release → `wxt submit` (API v2)
+- [ ] Cut `release/vX.Y.Z` → `-rc.N` candidates → Finalize tag → zip on GitHub release → `wxt submit` (API v2) (DECISIONS 0021)
 - [ ] Unlisted store item live. A second release goes out fully automated
 
 ### M0 — Spike (do this first, alone)
@@ -609,7 +609,7 @@ generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
 ## 13. Repo hygiene
 
 - `main` protected, trunk-based: short-lived branches, squash-merged PRs (DECISIONS 0004)
-- release-please owns versions and changelog. Release tags drive store submission (0005, 0006)
+- Release branches with tested candidates; Finalize tags the candidate and drives store submission (0021, 0006)
 - CI on PR: format + lint + typecheck + vitest + `wxt zip` + production-bundle check
 - On release: `wxt zip`, attach to GitHub release, `wxt submit` (API v2). Runbook: `docs/RELEASING.md`
 - Conventional commits (enforced on PR titles)

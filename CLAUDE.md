@@ -26,7 +26,7 @@ Every plan or design gets a Markdown file: plans in `docs/plans/NNNN-slug.md`, a
 
 - Import explicitly (`wxt/browser`, `wxt/utils/define-background`). WXT auto-imports are off. `@/` is the repo root.
 - Tests use `fakeBrowser` from `wxt/testing/fake-browser`. Unmocked APIs (e.g. `sidePanel`) need `vi.spyOn`.
-- PR titles are conventional commits (squash merge). release-please owns the version: never edit it by hand. See `docs/RELEASING.md`.
+- PR titles are conventional commits (squash merge); they become the changelog. The version is set only by the **Cut release** workflow: never edit it by hand. Releases go through `release/vX.Y.Z` branches and `-rc.N` candidates (`docs/RELEASING.md`, DECISIONS 0021).
 - Adding a manifest permission means also updating its justification in `docs/store/listing.md`, the list in `PRIVACY.md`, and SPEC §11.
 
 ## Rules (full text: SPEC §14)

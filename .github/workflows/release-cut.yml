@@ -1,0 +1,69 @@
+name: Cut release
+
+# Step 1 of a release (docs/RELEASING.md, DECISIONS 0021): branch release/vX.Y.Z off main, commit the
+# version and changelog there, then build the first candidate, vX.Y.Z-rc.1.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, X.Y.Z (e.g. 0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0 # the changelog reads history and tags
+      - uses: ./.github/actions/setup
+      - name: Check the version and that no other release is open
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must look like 0.2.0, got '$VERSION'"
+            exit 1
+          fi
+          if git ls-remote --exit-code --heads origin "release/v$VERSION" >/dev/null; then
+            echo "::error::release/v$VERSION already exists"
+            exit 1
+          fi
+          # One release at a time: every release branch must already have its final tag.
+          for branch in $(git ls-remote --heads origin 'release/v*' | sed 's#.*refs/heads/##'); do
+            if ! git ls-remote --exit-code --tags origin "refs/tags/v${branch#release/v}" >/dev/null; then
+              echo "::error::$branch is still open (no final tag). Finalize it first."
+              exit 1
+            fi
+          done
+      - name: Bump version and write the changelog
+        run: |
+          node scripts/prepare-release.mjs bump "$VERSION"
+          pnpm exec prettier --write package.json
+      - name: Push release/v${{ inputs.version }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "release/v$VERSION"
+          git commit -am "chore(release): $VERSION"
+          git push origin "release/v$VERSION"
+
+  # Pushes made with GITHUB_TOKEN do not start other workflows, so call the candidate build directly.
+  candidate:
+    needs: cut
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-candidate.yml
+    with:
+      branch: release/v${{ inputs.version }}
