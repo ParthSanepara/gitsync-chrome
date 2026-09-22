@@ -166,3 +166,11 @@ Entry format:
 - Context: Releases are tracked only as `vX.Y.Z` tags. The owner wants each shipped version also visible as its own branch, left untouched, so every release can be browsed and compared from the branch list.
 - Decision: After release-please creates a release, a `release-branch` job in `release.yml` creates `release/vX.Y.Z` at the tag's commit with the job's `GITHUB_TOKEN`. It is idempotent: if the branch already points at the tag it succeeds, and if it points anywhere else it fails rather than moving it. The tag stays the source of truth for the build and the store upload. `release/v0.1.0` was created by hand for the release that predates this job.
 - Consequences: One more branch per release. The branches are read-only by convention only: the repo is private on a free plan, so there are no rulesets to block pushes or deletions (0009). `docs/RELEASING.md` A.2 lists the `release/*` ruleset to add when that changes. Old releases are not patched on their branch; a fix ships as a new release from `main` (trunk-based, 0004).
+
+## 0020 — The repository is public, so rulesets are used
+
+- Date: 2026-09-23
+- Status: accepted (supersedes 0009, and the "read-only by convention only" consequence of 0019)
+- Context: 0009 kept the repo private, which on a free plan meant no rulesets. The repo has since been made public (tracked in #7). 0019 was written assuming it was still private.
+- Decision: Protect `main` and `release/*` with rulesets as listed in `docs/RELEASING.md` A.2. `release/*` branches become read-only in fact, not just by convention.
+- Consequences: A mistaken push to a release branch is rejected by GitHub. The privacy-policy hosting half of #7 (GitHub Pages instead of a Gist) is decided in plan 0005, not here.

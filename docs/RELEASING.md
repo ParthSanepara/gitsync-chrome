@@ -34,17 +34,12 @@ strictly higher than the last upload, and a manual upload breaks the pipeline.
    `RELEASE_PLEASE_TOKEN`.
    Why not `GITHUB_TOKEN`: PRs it opens do not trigger workflows, so the release PR would never get CI
    checks and could not satisfy branch protection.
-2. **Ruleset on `main`** (Settings → Rules → Rulesets). **Not available while the repo is private on
-   a free plan** (DECISIONS 0009). Until then these are conventions, not enforced:
-   - Merge through a PR only after CI and the PR-title check pass
-   - No force pushes to `main`
-
-   When the repo goes public or the plan is upgraded, turn them into a ruleset: require a PR, require status
-   checks `Lint, typecheck, test, build` and `Conventional commit title`, block force pushes and deletions,
-   require linear history.
-   Add a second ruleset targeting `release/*`: restrict updates, block force pushes, and restrict
-   deletions, so release branches are enforced read-only. Until then, the `release-branch` job refuses
-   to move an existing one, but nothing stops a manual push.
+2. **Rulesets** (Settings → Rules → Rulesets). The repo is public, so these are available
+   (DECISIONS 0020, superseding 0009). Create two:
+   - **`main`**: require a PR, require status checks `Lint, typecheck, test, build` and
+     `Conventional commit title`, block force pushes and deletions, require linear history.
+   - **`release/*`**: restrict updates, block force pushes, restrict deletions. Leave "Restrict
+     creations" off, so the `release-branch` job can still create new release branches.
 
 3. **Merge settings** (Settings → General): allow squash merging only. Default squash message: _Pull request title_.
    Enable "Automatically delete head branches".

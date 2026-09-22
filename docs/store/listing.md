@@ -3,6 +3,35 @@
 Source of truth for the store listing text. Update it in the same PR as any change to the extension's
 functionality, so the listing never promises more than the published version does.
 
+## 0.2.0
+
+**Summary:** unchanged.
+
+**Description:**
+
+```text
+Sync branches between GitHub repositories.
+
+Copy a branch from one GitHub repository to another repository you can write to, straight from a Chrome side panel. There is no GitSync server: your browser talks only to GitHub.
+
+HOW IT WORKS
+• Sign in with GitHub. GitSync shows a code; you approve it on github.com.
+• Pick the source repository and branch, then the target repository and branch. If you open GitSync on a GitHub repository page, that repository is pre-selected as the source.
+• See a preview of what will happen before anything is written.
+• Run the sync and watch its progress. You can cancel; the target branch is only moved at the end.
+
+OPTIONS
+• Latest commit only: one new commit with the source files. Works between any two repositories.
+• Full history: every commit. Instant when the target is a fork of the source; otherwise GitSync clones and pushes from your browser.
+• Push to the target branch, force push, or open a pull request instead.
+• Create a new target branch.
+• Entire repository: sync every branch (up to 100) into same-named branches.
+
+PRIVACY
+• No GitSync account and no GitSync server. No analytics or tracking.
+• Your GitHub sign-in is kept on your device for up to 7 days, and sent only to GitHub.
+```
+
 ## v0.1.0 (early preview)
 
 **Name:** GitSync
