@@ -29,6 +29,7 @@ preview requires.
 | Target | any repo the user can write, existing branch or new branch |
 | History | latest commit only (squashed) · last N commits · full history |
 | Write | direct push · force push · open a pull request instead |
+| Branches | one branch · every branch of the repository |
 | Scope | whole tree · path include/exclude globs · subdirectory remap |
 
 The **user chooses the history mode**. The extension chooses the *engine* that
@@ -135,13 +136,18 @@ interface Provider {
   };
 
   listRepos(cred: Credential, q: string): Promise<Repo[]>;
+  getRepo(cred: Credential, repo: RepoRef): Promise<Repo>;   // any repo the account can read, not only its own
   listRefs(cred: Credential, repo: RepoRef): Promise<Ref[]>;
   resolveRef(cred: Credential, repo: RepoRef, ref: string): Promise<Commit>;
   getTree(cred: Credential, repo: RepoRef, sha: string): Promise<TreeEntry[]>;
   listCommits(cred: Credential, repo: RepoRef, ref: string, n: number): Promise<Commit[]>;
 
-  /** Can a ref in `tgt` point at a commit object that only exists in `src`? */
-  sharesObjectStore(src: RepoRef, tgt: RepoRef, cred: Credential): Promise<boolean>;
+  /** Can a ref in `repo` point at this commit? True across a fork network. A probe, not an assumption. */
+  canReachCommit(cred: Credential, repo: RepoRef, sha: string): Promise<boolean>;
+  getBranch(cred: Credential, repo: RepoRef, branch: string): Promise<BranchState>;
+  getTree(cred: Credential, repo: RepoRef, sha: string): Promise<{ entries: TreeEntry[]; truncated: boolean }>;
+  readBlobText(cred: Credential, repo: RepoRef, sha: string): Promise<string>;
+  rateLimit(): RateLimit | undefined;
 
   capabilities: {
     batchCommit: boolean;      // one call for many file actions (GitLab: true)
@@ -165,7 +171,7 @@ Three known GitLab divergences, encoded above so the planner never assumes:
 
 - **No object-store sharing.** GitHub's fork network lets you create a ref
   pointing at a commit that exists only in the parent. GitLab has no equivalent,
-  so the ref-copy engine is GitHub-only. Hence `sharesObjectStore()` is a probe,
+  so the ref-copy engine is GitHub-only. Hence `canReachCommit()` is a probe,
   not an assumption.
 - **Batch commits.** GitLab's commits API accepts an array of file actions
   (create/update/delete/move) in one call, replacing GitHub's
@@ -210,10 +216,10 @@ A `SyncPlan` resolves **two** credentials — read on source, write on target.
 They may be different objects. Every provider method takes a `Credential`
 explicitly; there is no ambient "current token".
 
-### 6.2 PAT (ship in v1, keep forever)
+### 6.2 PAT (fallback, keep forever)
 
-User pastes a fine-grained PAT. Kept permanently as a first-class option, not a
-stopgap: some users cannot authorize an OAuth app against a work org, and
+User pastes a fine-grained PAT. Kept permanently as a first-class fallback to
+GitHub login (§6.3), not a stopgap: some users cannot authorize an OAuth app against a work org, and
 fine-grained PATs scope more tightly than OAuth scopes.
 
 Required permissions, surfaced in the UI as a checklist:
@@ -230,7 +236,12 @@ Request Workflows conditionally. Asking for it up front deters users, and most
 syncs never touch workflow files. Detect the need during planning and prompt
 only then.
 
-### 6.3 Device flow (v1.5)
+### 6.3 GitHub login: device flow (primary, v1)
+
+This is the default way to connect (DECISIONS 0010). One login yields a token
+that can read the source and write the target across every owner the account
+can reach, so the per-owner PAT problem in §6.1 does not arise. Store the same
+token under each `host:owner` key it serves.
 
 Standard OAuth web flow is impossible — the code→token exchange needs a client
 secret and there is nowhere safe to keep one in a shipped extension. Device flow
@@ -251,17 +262,36 @@ poll POST https://github.com/login/oauth/access_token
 Honour `interval`, and increase it on `slow_down`. This endpoint has no CORS
 headers, which is fine because of the `github.com` host permission.
 
-Note: an **OAuth App** device flow yields classic scopes (`repo`, `workflow`) —
-coarse. A **GitHub App** device flow yields the app's fine-grained permissions
-but adds an installation step. Start with the OAuth App; revisit if users
-complain about the breadth of `repo`.
+Decided: an **OAuth App** (DECISIONS 0010). Its device flow yields classic scopes
+— coarse, but with no installation step. Request `repo workflow` in one login
+(DECISIONS 0013, which replaced asking for `workflow` mid-sync). The
+`client_id` is public and committed to the repo; there is no secret. Device flow
+must be enabled in the OAuth App settings.
+
+Known limits, surfaced in the UI rather than hidden:
+
+- Orgs with OAuth app access restrictions must approve the app before their
+  private repos are visible. Say so when a repo list comes back short.
+- The token is kept in `chrome.storage.local` for at most 7 days (§6.4,
+  DECISIONS 0014), so the user logs in again after that or after any anomaly.
+- Revisit a GitHub App only if users complain about the breadth of `repo`.
 
 ### 6.4 Storage rules
 
-- Tokens → `chrome.storage.session`. Cleared on browser restart by design.
+- Tokens → `chrome.storage.local`, for at most 7 days from sign-in (DECISIONS 0014). This replaces the earlier
+  session-only rule so a browser restart does not force a new login. Local storage is on disk and unencrypted, so
+  a stored credential is dropped, and the user signs in again, when any of these happen:
+  - it is older than 7 days, or its expiry is missing or implausibly far ahead, or the data does not parse
+  - GitHub answers 401 to it (revoked or expired), on open or during any call
+  - on open, GitHub reports a different account or different scopes than the ones stored
+  - the extension updates (`runtime.onInstalled`, reason `update`)
+  - the user signs out
+  Removing or reinstalling the extension deletes its storage, so it also ends the login.
 - Sync profiles, UI prefs → `chrome.storage.local`.
 - **Nothing** in `chrome.storage.sync` — it replicates to Google's servers.
 - Never log a token, not even truncated, not even in dev builds.
+- Signing out only forgets the token here. Revoking it on GitHub (github.com/settings/applications) is up to the
+  user, because revoking needs the OAuth App's client secret, which the extension does not have.
 
 ---
 
@@ -302,7 +332,7 @@ interface SyncPlan {
 
 Engine selection, in order — first match wins:
 
-1. `mode === 'full'` **and** `provider.sharesObjectStore(src, tgt)` → **ref-copy**
+1. `mode === 'full'` **and** `provider.canReachCommit(tgt, srcSha)` → **ref-copy**
 2. `mode === 'snapshot'` or (`mode === 'lastN'` and `n` small) → **tree-replay**
 3. `mode === 'full'` → **git-clone**
 4. repo too large for git-clone → **blocker**, with guidance
@@ -462,7 +492,7 @@ gitsync-chrome/
 
 ```jsonc
 {
-  "permissions": ["storage", "sidePanel", "offscreen", "alarms"],
+  "permissions": ["storage", "sidePanel", "offscreen", "alarms", "activeTab"],
   "host_permissions": [
     "https://api.github.com/*",
     "https://github.com/*"
@@ -470,8 +500,11 @@ gitsync-chrome/
 }
 ```
 
-Consider moving `https://github.com/*` to `optional_host_permissions` and
-requesting it at runtime. Broad host permissions at install time measurably hurt
+Device flow (§6.3) POSTs to `github.com/login/*`, so `https://github.com/*` is
+needed from the first login. Adding it to the published extension shows existing
+installs a new-permission prompt (DECISIONS 0010). Consider moving it to
+`optional_host_permissions` and requesting it at runtime when the user clicks
+Log in. Broad host permissions at install time measurably hurt
 install conversion and attract review scrutiny. The plumbing is also what
 self-hosted GitLab will need later.
 
@@ -485,6 +518,10 @@ Permission justifications — write these now, not at submission:
 - `storage` — "Stores the user's saved sync configurations locally and their
   access token in session storage."
 - `alarms` — "Scheduled syncs."
+- `activeTab` — "When the user opens the side panel, lets it read the URL of
+  the tab they had open, so it can pre-select that repository as the sync
+  source if it is a GitHub repo page. Granted only for that one tab, only at
+  that moment; no standing access to browsing history."
 
 ---
 
@@ -501,6 +538,8 @@ Added 2026-09-17. Precedes M0.
 
 ### M0 — Spike (do this first, alone)
 
+Updated 2026-09-20: adds the device flow experiment (DECISIONS 0010).
+
 No framework, no UI, no React. A bare unpacked extension with an offscreen
 document. Answers the questions that can invalidate the design.
 
@@ -512,14 +551,24 @@ document. Answers the questions that can invalidate the design.
 - [ ] Find the real blob-size ceiling on `POST git/blobs` empirically
 - [ ] Confirm the fork-network ref-copy trick works end to end
 - [ ] Confirm a full clone survives while the service worker is terminated
+- [ ] Complete device flow from an extension context: code request, polling,
+      `slow_down` handling, token works against `api.github.com`
 
 If the clone+push fails, git-clone is dropped and full history falls back to a
 generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
+
+> This gate was not honored: `src/engines/gitClone.ts` and `entrypoints/offscreen/`
+> shipped directly against §8.3 without running these experiments (DECISIONS
+> 0016). Q1-Q3 below are still open; `spike/` is still the way to close them
+> against a real repository, and the code ships with `// VERIFY:`-tagged
+> placeholders (`GIT_CLONE_MAX_REPO_KB`, the `x-access-token` auth form) standing
+> in for their answers.
 
 ### M1 — Headless core
 - [ ] GitHub client: auth header, exponential backoff, rate-limit header tracking
 - [ ] zod schemas for every response consumed
 - [ ] `Provider` implemented for GitHub
+- [ ] Device flow login (`auth/device.ts`) and PAT fallback, tokens in `chrome.storage.local` for 7 days (DECISIONS 0014)
 - [ ] ref-copy and tree-replay (snapshot) engines
 - [ ] `planner.ts` with engine selection and estimates
 - [ ] vitest suite against fixtures, no live network
@@ -527,7 +576,10 @@ generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
 
 ### M2 — UI
 - [ ] Side panel: Auth → Source → Target → Preview → Progress → Result
-- [ ] PAT auth with the permission checklist
+- [ ] Login with GitHub (device flow) as the default Auth screen
+- [ ] Repo and branch pickers for source and target
+- [ ] History mode selector: latest commit only · last N · full history
+- [ ] PAT fallback with the permission checklist
 - [ ] Preview screen showing engine, reason, estimates, warnings, blockers
 - [ ] Live progress with cancel
 - [ ] Usable by you for real work
@@ -535,8 +587,8 @@ generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
 ### M3 — Polish
 - [ ] Saved sync profiles, one-click re-run
 - [ ] Path filters and subdirectory remap
-- [ ] PR mode
-- [ ] Full error taxonomy with actionable messages
+- [x] PR mode
+- [~] Full error taxonomy with actionable messages (protected branch, secret scanning, branch-name conflicts, empty repo done; the rest as found)
 - [ ] `lastN` and `full` modes wired to their engines
 - [ ] Content script Sync button
 
@@ -549,7 +601,6 @@ generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
 - [ ] Confirm no WXT HMR runtime in the production zip
 
 ### M5 — Public
-- [ ] Device flow auth
 - [ ] Scheduled sync via alarms
 - [ ] Optional host permissions at runtime
 
@@ -598,8 +649,8 @@ generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
 | 1 | Does isomorphic-git clone+push work with no proxy under host permissions? | M0 | open |
 | 2 | Practical repo size ceiling for git-clone in an offscreen doc | M0 | open |
 | 3 | Real `POST git/blobs` size limit | M0 | open |
-| 4 | Install-time vs runtime host permission for `github.com` | M2 | open |
-| 5 | OAuth App (`repo` scope) vs GitHub App (fine-grained) for device flow | M5 | open |
+| 4 | Install-time vs runtime host permission for `github.com` | M2 | open. Device flow now needs it from the first login, see §11 |
+| 5 | OAuth App (`repo` scope) vs GitHub App (fine-grained) for device flow | — | closed: OAuth App, DECISIONS 0010 |
 | 6 | Actions-delegated engine needed as fallback? | depends on Q1 | open |
 
 Append answers to `docs/DECISIONS.md` as they close.

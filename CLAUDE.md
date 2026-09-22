@@ -20,7 +20,7 @@ Every plan or design gets a Markdown file: plans in `docs/plans/NNNN-slug.md`, a
 - `pnpm build` / `pnpm zip`: production build in `.output/chrome-mv3` / store zip
 - `pnpm test`: vitest (`pnpm vitest run tests/sidePanel.test.ts` for one file)
 - `pnpm lint`, `pnpm typecheck`, `pnpm format:check`: all enforced in CI
-- `pnpm icons`: re-render `public/icon/*.png` from `assets/icon.svg` (needs `rsvg-convert`)
+- `pnpm icons`: re-render `public/icon/*.png` from `assets/icon.svg` (Node renderer in `scripts/render-icons.mjs`)
 
 ## Conventions
 
@@ -42,4 +42,4 @@ Every plan or design gets a Markdown file: plans in `docs/plans/NNNN-slug.md`, a
 9. Failures are typed via the discriminated union in `src/errors.ts`. No bare `Error(string)`.
 10. Tests use recorded fixtures. No live network in CI.
 
-Credentials are per `host:owner` (`CredentialKey`), passed explicitly to every provider call. Tokens live only in `chrome.storage.session`. Never use `chrome.storage.sync`.
+Credentials are per `host:owner` (`CredentialKey`), passed explicitly to every provider call. Tokens live in `chrome.storage.local` for at most 7 days and are dropped on any anomaly (DECISIONS 0014, SPEC §6.4). Never use `chrome.storage.sync`.
