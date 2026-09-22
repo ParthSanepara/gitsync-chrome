@@ -58,15 +58,9 @@ strictly higher than the last upload, and a manual upload breaks the pipeline.
    - At least one screenshot, 1280×800 or 640×400
    - Category: Developer Tools
 4. **Privacy tab**
-   - Single purpose: _Sync branches between GitHub repositories._
-   - Permission justifications (keep in sync with `wxt.config.ts` and SPEC §11):
-     - `sidePanel`: "The extension's interface is a side panel so a long-running sync stays visible while the user works in other tabs."
-     - `storage`: "Keeps the user's GitHub sign-in token in session storage (cleared when the browser closes) so they stay signed in while using the side panel."
-     - `https://github.com/*`: "Required to sign in with GitHub, and to perform git clone and push operations over HTTPS directly from the user's browser for full-history syncs, so that repository contents are never routed through any third-party server. GitHub's device-flow login endpoints (github.com/login/*) also do not allow cross-origin requests, so the extension needs host access to call them directly."
-     - `offscreen`: "Sync operations run for minutes; the extension service worker is terminated while idle and cannot host them."
-     - `activeTab`: "When the user opens the side panel, lets it read the URL of the tab they had open, so it can pre-select that repository as the sync source if it is a GitHub repo page. Granted only for that one tab, only at that moment."
+   - Single purpose, justifications, remote code: copy from `docs/store/listing.md` (Privacy practices tab).
    - Data usage: no user data collected. Tick the three certification boxes.
-   - Privacy policy URL: GitHub Pages URL of `PRIVACY.md` (see D).
+   - Privacy policy URL: public Gist URL of `PRIVACY.md` (see D).
 5. **Distribution**: visibility **Unlisted**.
 6. Submit for review.
 7. Copy the **Publisher ID** (Dashboard → Settings / Account) and the **extension ID**.
