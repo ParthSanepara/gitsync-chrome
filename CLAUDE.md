@@ -20,7 +20,7 @@ Every plan or design gets a Markdown file: plans in `docs/plans/NNNN-slug.md`, a
 - `pnpm build` / `pnpm zip`: production build in `.output/chrome-mv3` / store zip
 - `pnpm test`: vitest (`pnpm vitest run tests/sidePanel.test.ts` for one file)
 - `pnpm lint`, `pnpm typecheck`, `pnpm format:check`: all enforced in CI
-- `pnpm icons`: re-render `public/icon/*.png` from `assets/icon.svg` (needs `rsvg-convert`)
+- `pnpm icons`: re-render `public/icon/*.png` from `assets/icon.svg` (Node renderer in `scripts/render-icons.mjs`)
 
 ## Conventions
 
