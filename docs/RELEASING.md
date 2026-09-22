@@ -64,6 +64,7 @@ strictly higher than the last upload, and a manual upload breaks the pipeline.
      - `storage`: "Keeps the user's GitHub sign-in token in session storage (cleared when the browser closes) so they stay signed in while using the side panel."
      - `https://github.com/*`: "Required to sign in with GitHub, and to perform git clone and push operations over HTTPS directly from the user's browser for full-history syncs, so that repository contents are never routed through any third-party server. GitHub's device-flow login endpoints (github.com/login/*) also do not allow cross-origin requests, so the extension needs host access to call them directly."
      - `offscreen`: "Sync operations run for minutes; the extension service worker is terminated while idle and cannot host them."
+     - `activeTab`: "When the user opens the side panel, lets it read the URL of the tab they had open, so it can pre-select that repository as the sync source if it is a GitHub repo page. Granted only for that one tab, only at that moment."
    - Data usage: no user data collected. Tick the three certification boxes.
    - Privacy policy URL: GitHub Pages URL of `PRIVACY.md` (see D).
 5. **Distribution**: visibility **Unlisted**.

@@ -111,7 +111,12 @@ export function useAuth() {
     dispatch({ type: 'requesting', previous: options?.previous });
 
     const result = await signInWithGitHub(
-      (code) => dispatch({ type: 'code', code }),
+      (code) => {
+        dispatch({ type: 'code', code });
+        // Opens on its own so approving is one less click; the panel still shows a manual link in
+        // case a popup blocker or window manager stops it.
+        void browser.tabs.create({ url: code.verificationUri });
+      },
       controller.signal,
       undefined,
       options?.scope,

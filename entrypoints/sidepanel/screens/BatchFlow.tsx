@@ -12,13 +12,9 @@ import { describeBatchError, describePlanBlocker } from '@/src/errors';
 import type { HistoryMode } from '@/src/plan';
 import type { Credential, Repo } from '@/src/providers/types';
 import { provider } from '../provider';
+import { Button, dividedListClass, mutedTextClass, textLinkClass } from '../ui';
 
 type Phase = 'idle' | 'planning' | 'preview' | 'confirm' | 'running' | 'done';
-
-const primary =
-  'rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white enabled:hover:bg-slate-700 disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900';
-const secondary =
-  'rounded-md border border-slate-400 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800';
 
 function describeItem(item: BatchItem): { label: string; tone: 'ok' | 'muted' | 'bad'; selectable: boolean } {
   if (item.error) return { label: `Could not plan: ${item.error}`, tone: 'bad', selectable: false };
@@ -141,14 +137,14 @@ export function BatchFlow({
     return (
       <div className="flex flex-col gap-2">
         {error && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          <p role="alert" className="text-sm text-[#d1242f] dark:text-[#f85149]">
             {error}
           </p>
         )}
-        <button className={primary} onClick={() => void preview()}>
+        <Button variant="primary" onClick={() => void preview()}>
           Preview all branches
-        </button>
-        <p className="text-xs text-slate-500">
+        </Button>
+        <p className={mutedTextClass}>
           Lists every branch of {source.fullName} (up to {MAX_BATCH_BRANCHES}) and checks each against {target.fullName}
           . Tags are not included, and branches that exist only in the target are never deleted.
         </p>
@@ -163,9 +159,9 @@ export function BatchFlow({
         <p className="text-sm">
           {p && p.total > 0 ? `Checking branch ${Math.min(p.done + 1, p.total)} of ${p.total}…` : 'Listing branches…'}
         </p>
-        <button className={secondary + ' self-start'} onClick={() => abort.current?.abort()}>
+        <Button className="self-start" onClick={() => abort.current?.abort()}>
           Cancel
-        </button>
+        </Button>
       </div>
     );
   }
@@ -176,16 +172,16 @@ export function BatchFlow({
     const failed = Object.values(outcomes).filter((o) => o.status === 'failed').length;
     return (
       <section className="flex flex-col gap-3" aria-live="polite">
-        <h2 className="text-sm font-semibold">
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           {phase === 'running'
             ? `Syncing ${source.fullName} → ${target.fullName}`
             : `Finished: ${synced} synced, ${failed} failed`}
         </h2>
-        <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 text-sm dark:divide-slate-700 dark:border-slate-700">
+        <ul className={dividedListClass + ' text-sm'}>
           {ran.map((i) => (
-            <li key={i.branch} className="flex flex-col gap-0.5 px-2 py-1.5">
-              <span className="truncate font-medium">{i.branch}</span>
-              <span className="text-xs text-slate-500">
+            <li key={i.branch} className="flex flex-col gap-0.5 px-2.5 py-1.5">
+              <span className="truncate font-mono font-medium">{i.branch}</span>
+              <span className={mutedTextClass}>
                 {outcomes[i.branch]
                   ? describeOutcome(outcomes[i.branch])
                   : current === i.branch
@@ -197,15 +193,15 @@ export function BatchFlow({
         </ul>
         {phase === 'running' ? (
           <>
-            <button className={secondary + ' self-start'} onClick={() => abort.current?.abort()}>
+            <Button className="self-start" onClick={() => abort.current?.abort()}>
               Cancel after this branch
-            </button>
-            <p className="text-xs text-slate-500">Keep this panel open until it finishes.</p>
+            </Button>
+            <p className={mutedTextClass}>Keep this panel open until it finishes.</p>
           </>
         ) : (
-          <button className={secondary + ' self-start'} onClick={() => setPhase('idle')}>
+          <Button className="self-start" onClick={() => setPhase('idle')}>
             Done
-          </button>
+          </Button>
         )}
       </section>
     );
@@ -222,23 +218,21 @@ export function BatchFlow({
   if (phase === 'confirm') {
     return (
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold">Confirm</h2>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Confirm</h2>
         <p className="text-sm">
           This syncs {chosen} branch(es) of <strong>{source.fullName}</strong> into <strong>{target.fullName}</strong>,
           one at a time. Missing branches are created; existing ones get a new commit.
         </p>
         {write === 'force-push' && (
-          <p className="text-sm text-amber-700 dark:text-amber-400">
+          <p className="text-sm text-[#9a6700] dark:text-[#d29922]">
             Force push is on: diverged branches can be overwritten.
           </p>
         )}
         <div className="flex gap-2">
-          <button className={primary} onClick={() => void start()}>
+          <Button variant="primary" onClick={() => void start()}>
             Sync {chosen} branch(es)
-          </button>
-          <button className={secondary} onClick={() => setPhase('preview')}>
-            Back
-          </button>
+          </Button>
+          <Button onClick={() => setPhase('preview')}>Back</Button>
         </div>
       </section>
     );
@@ -250,24 +244,24 @@ export function BatchFlow({
         {items.length} branch(es): {counts.create} new, {counts.update} to update, {counts.same} up to date,{' '}
         {counts.blocked} blocked.
       </p>
-      <div className="flex gap-3 text-xs">
+      <div className="flex gap-3">
         <button
-          className="underline"
+          className={textLinkClass}
           onClick={() => setSelected(new Set(items.filter((i) => describeItem(i).selectable).map((i) => i.branch)))}
         >
           Select all
         </button>
-        <button className="underline" onClick={() => setSelected(new Set())}>
+        <button className={textLinkClass} onClick={() => setSelected(new Set())}>
           Select none
         </button>
       </div>
-      <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
+      <ul className={dividedListClass}>
         {items.map((i) => {
           const d = describeItem(i);
           return (
             <li key={i.branch}>
               <label
-                className={`flex items-start gap-2 px-2 py-1.5 text-sm ${d.selectable ? 'cursor-pointer' : 'opacity-70'}`}
+                className={`flex items-start gap-2 px-2.5 py-1.5 text-sm ${d.selectable ? 'cursor-pointer' : 'opacity-70'}`}
               >
                 <input
                   type="checkbox"
@@ -277,9 +271,9 @@ export function BatchFlow({
                   onChange={() => toggle(i.branch)}
                 />
                 <span className="min-w-0">
-                  <span className="block truncate font-medium">{i.branch}</span>
+                  <span className="block truncate font-mono font-medium">{i.branch}</span>
                   <span
-                    className={`block text-xs ${d.tone === 'bad' ? 'text-red-600 dark:text-red-400' : 'text-slate-500'}`}
+                    className={`block text-xs ${d.tone === 'bad' ? 'text-[#d1242f] dark:text-[#f85149]' : 'text-slate-500 dark:text-slate-400'}`}
                   >
                     {d.label}
                   </span>
@@ -289,9 +283,9 @@ export function BatchFlow({
           );
         })}
       </ul>
-      <button className={primary} disabled={chosen === 0} onClick={() => setPhase('confirm')}>
+      <Button variant="primary" disabled={chosen === 0} onClick={() => setPhase('confirm')}>
         {chosen === 0 ? 'Select at least one branch' : `Sync ${chosen} branch(es)`}
-      </button>
+      </Button>
     </section>
   );
 }

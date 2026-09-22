@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { SyncResult, Progress } from '@/src/engines/types';
 import type { SyncPlan } from '@/src/plan';
+import { Button, fieldClass, LinkButton, mutedTextClass } from '../ui';
 
 export type RunState =
   | { status: 'idle' }
@@ -19,11 +20,6 @@ interface Props {
   onReset: () => void;
 }
 
-const primary =
-  'rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900';
-const secondary =
-  'rounded-md border border-slate-400 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800';
-
 export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Props) {
   const to = `${plan.target.repo.fullName}@${plan.target.branch}`;
   // Only set for the one-new-commit engines (tree-replay, snapshot mode). Re-initializes whenever a
@@ -33,7 +29,7 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
   if (run.status === 'confirm') {
     return (
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold">Confirm</h2>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Confirm</h2>
         <p className="text-sm">
           {plan.pullRequest ? (
             <>
@@ -74,9 +70,9 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
         </p>
         {plan.commitMessage !== undefined && (
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-slate-500">Commit message</span>
+            <span className="text-slate-500 dark:text-slate-400">Commit message</span>
             <textarea
-              className="rounded-md border border-slate-400 p-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className={fieldClass}
               rows={2}
               value={commitMessage}
               onChange={(e) => setCommitMessage(e.target.value)}
@@ -84,17 +80,15 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
           </label>
         )}
         {plan.write === 'force-push' && (
-          <p className="text-sm text-amber-700 dark:text-amber-400">
+          <p className="text-sm text-[#9a6700] dark:text-[#d29922]">
             Force push is on: the target branch can be overwritten.
           </p>
         )}
         <div className="flex gap-2">
-          <button className={primary} onClick={() => onConfirm(commitMessage)}>
+          <Button variant="primary" onClick={() => onConfirm(commitMessage)}>
             Sync now
-          </button>
-          <button className={secondary} onClick={onBack}>
-            Back
-          </button>
+          </Button>
+          <Button onClick={onBack}>Back</Button>
         </div>
       </section>
     );
@@ -105,15 +99,15 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
     const pct = p && p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
     return (
       <section className="flex flex-col gap-3" aria-live="polite">
-        <h2 className="text-sm font-semibold">Syncing to {to}</h2>
-        <div className="h-2 overflow-hidden rounded bg-slate-200 dark:bg-slate-700">
-          <div className="h-full bg-slate-900 dark:bg-slate-100" style={{ width: `${pct}%` }} />
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Syncing to {to}</h2>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          <div className="h-full bg-[#1f883d] transition-[width]" style={{ width: `${pct}%` }} />
         </div>
-        <p className="truncate text-xs text-slate-500">{p ? `${p.message} (${p.done}/${p.total})` : 'Starting…'}</p>
-        <button className={secondary + ' self-start'} onClick={onCancel}>
+        <p className={mutedTextClass + ' truncate'}>{p ? `${p.message} (${p.done}/${p.total})` : 'Starting…'}</p>
+        <Button className="self-start" onClick={onCancel}>
           Cancel
-        </button>
-        <p className="text-xs text-slate-500">Keep this panel open until it finishes.</p>
+        </Button>
+        <p className={mutedTextClass}>Keep this panel open until it finishes.</p>
       </section>
     );
   }
@@ -122,7 +116,7 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
     const url = `https://github.com/${plan.target.repo.fullName}/commit/${run.result.commitSha}`;
     return (
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-green-700 dark:text-green-400">Synced</h2>
+        <h2 className="text-sm font-semibold text-[#1f883d] dark:text-[#3fb950]">Synced</h2>
         <p className="text-sm">
           {plan.engine === 'ref-copy'
             ? `${to} now points at the source commit.`
@@ -131,21 +125,28 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
               : `${run.result.filesChanged} file(s) changed, ${run.result.blobsUploaded} uploaded, in one commit on ${to}.`}
         </p>
         {run.result.pullRequestUrl && (
-          <a className={primary + ' text-center'} href={run.result.pullRequestUrl} target="_blank" rel="noreferrer">
+          <LinkButton
+            variant="primary"
+            className="text-center"
+            href={run.result.pullRequestUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
             Open the pull request
-          </a>
+          </LinkButton>
         )}
-        <a
-          className={run.result.pullRequestUrl ? secondary + ' text-center' : primary + ' text-center'}
+        <LinkButton
+          variant={run.result.pullRequestUrl ? 'secondary' : 'primary'}
+          className="text-center"
           href={url}
           target="_blank"
           rel="noreferrer"
         >
           View commit {run.result.commitSha.slice(0, 7)}
-        </a>
-        <button className={secondary + ' self-start'} onClick={onReset}>
+        </LinkButton>
+        <Button className="self-start" onClick={onReset}>
           Done
-        </button>
+        </Button>
       </section>
     );
   }
@@ -153,13 +154,13 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
   if (run.status === 'failed') {
     return (
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-red-600 dark:text-red-400">Sync did not finish</h2>
+        <h2 className="text-sm font-semibold text-[#d1242f] dark:text-[#f85149]">Sync did not finish</h2>
         <p role="alert" className="text-sm">
           {run.message}
         </p>
-        <button className={secondary + ' self-start'} onClick={onReset}>
+        <Button className="self-start" onClick={onReset}>
           Back
-        </button>
+        </Button>
       </section>
     );
   }

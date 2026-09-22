@@ -478,7 +478,7 @@ gitsync-chrome/
 
 ```jsonc
 {
-  "permissions": ["storage", "sidePanel", "offscreen", "alarms"],
+  "permissions": ["storage", "sidePanel", "offscreen", "alarms", "activeTab"],
   "host_permissions": [
     "https://api.github.com/*",
     "https://github.com/*"
@@ -501,6 +501,10 @@ Permission justifications — write these now, not at submission:
 - `storage` — "Stores the user's saved sync configurations locally and their
   access token in session storage."
 - `alarms` — "Scheduled syncs."
+- `activeTab` — "When the user opens the side panel, lets it read the URL of
+  the tab they had open, so it can pre-select that repository as the sync
+  source if it is a GitHub repo page. Granted only for that one tab, only at
+  that moment; no standing access to browsing history."
 
 ---
 

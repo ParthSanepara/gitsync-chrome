@@ -21,14 +21,18 @@ export function ChoiceGroup<T extends string>({
 }) {
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1 text-sm font-semibold">{legend}</legend>
+      <legend className="mb-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{legend}</legend>
       {options.map((o) => (
         <label
           key={o.value}
           className={[
-            'flex items-start gap-2 rounded-md border p-2 text-sm',
-            o.value === value ? 'border-slate-900 dark:border-slate-100' : 'border-slate-300 dark:border-slate-600',
-            o.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+            'flex items-start gap-2 rounded-md border p-2.5 text-sm transition-colors',
+            o.value === value
+              ? 'border-[#0969da] bg-[#0969da]/5 dark:border-[#4493f8] dark:bg-[#4493f8]/10'
+              : 'border-slate-300 dark:border-slate-600',
+            o.disabled
+              ? 'cursor-not-allowed opacity-50'
+              : 'cursor-pointer hover:border-slate-400 dark:hover:border-slate-500',
           ].join(' ')}
         >
           <input
@@ -38,11 +42,11 @@ export function ChoiceGroup<T extends string>({
             checked={o.value === value}
             disabled={o.disabled}
             onChange={() => onChange(o.value)}
-            className="mt-0.5"
+            className="mt-0.5 accent-[#0969da]"
           />
           <span>
-            <span className="font-medium">{o.label}</span>
-            {o.hint && <span className="block text-xs text-slate-500">{o.hint}</span>}
+            <span className="font-medium text-slate-900 dark:text-slate-100">{o.label}</span>
+            {o.hint && <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{o.hint}</span>}
           </span>
         </label>
       ))}

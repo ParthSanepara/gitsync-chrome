@@ -3,6 +3,7 @@ import { branchNameProblem } from '@/src/gitRefs';
 import { describeApiError } from '@/src/errors';
 import type { Credential, Ref, Repo } from '@/src/providers/types';
 import { provider } from '../provider';
+import { fieldClass, mutedTextClass } from '../ui';
 
 interface Props {
   credential: Credential;
@@ -16,8 +17,6 @@ interface Props {
 }
 
 const NEW = '__new__';
-const field =
-  'w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800';
 
 /** Mount it with `key={repo.fullName}` so switching repos reloads the list. */
 export function BranchSelect({ credential, repo, value, onChange, allowNew, preferred }: Props) {
@@ -43,12 +42,12 @@ export function BranchSelect({ credential, repo, value, onChange, allowNew, pref
 
   if (error) {
     return (
-      <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+      <p role="alert" className="text-xs text-[#d1242f] dark:text-[#f85149]">
         {error}
       </p>
     );
   }
-  if (!refs) return <p className="text-xs text-slate-500">Loading branches…</p>;
+  if (!refs) return <p className={mutedTextClass}>Loading branches…</p>;
 
   const branches = refs.filter((r) => r.kind === 'branch');
   const tags = allowNew ? [] : refs.filter((r) => r.kind === 'tag');
@@ -59,7 +58,7 @@ export function BranchSelect({ credential, repo, value, onChange, allowNew, pref
   return (
     <div className="flex flex-col gap-1.5">
       <select
-        className={field}
+        className={fieldClass}
         value={creating ? NEW : (value ?? repo.defaultBranch)}
         aria-label={allowNew ? 'Target branch' : 'Source branch'}
         onChange={(e) => {
@@ -89,18 +88,18 @@ export function BranchSelect({ credential, repo, value, onChange, allowNew, pref
       {creating && (
         <>
           <input
-            className={field}
+            className={fieldClass}
             value={value}
             placeholder="new-branch-name"
             aria-label="New branch name"
             onChange={(e) => onChange(e.target.value.trim())}
           />
           {problem ? (
-            <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+            <p role="alert" className="text-xs text-[#d1242f] dark:text-[#f85149]">
               {problem}
             </p>
           ) : (
-            <p className="text-xs text-slate-500">
+            <p className={mutedTextClass}>
               <code>{value}</code> does not exist in {repo.fullName} yet. It will be created.
             </p>
           )}
