@@ -51,6 +51,11 @@ export const refListItem = z.object({
   commit: z.object({ sha: z.string() }),
 });
 
+export const matchingRefItem = z.object({
+  ref: z.string(),
+  object: z.object({ sha: z.string() }),
+});
+
 export const commitResponse = z.object({
   sha: z.string(),
   commit: z.object({ message: z.string(), tree: z.object({ sha: z.string() }) }),

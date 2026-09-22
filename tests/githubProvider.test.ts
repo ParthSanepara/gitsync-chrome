@@ -3,15 +3,15 @@ import { GitHubClient } from '@/src/providers/github/client';
 import { GitHubProvider } from '@/src/providers/github';
 import type { Credential } from '@/src/providers/types';
 
-import branchesFx from './fixtures/octocat-hello-world.branches.json';
 import commitFx from './fixtures/octocat-hello-world.commit.json';
+import matchingRefsFx from './fixtures/octocat-hello-world.matching-refs.json';
 import repoFx from './fixtures/octocat-hello-world.repo.json';
 import tagsFx from './fixtures/actions-checkout.tags.json';
 
 const fixtures: Record<string, unknown> = {
   'octocat-hello-world.repo.json': repoFx,
-  'octocat-hello-world.branches.json': branchesFx,
   'octocat-hello-world.commit.json': commitFx,
+  'octocat-hello-world.matching-refs.json': matchingRefsFx,
   'actions-checkout.tags.json': tagsFx,
 };
 const fixture = (name: string): unknown => fixtures[name];
@@ -76,7 +76,7 @@ describe('GitHubProvider (recorded responses)', () => {
 
   it('listRefs returns branches then tags', async () => {
     const { p } = provider({
-      '/repos/octocat/Hello-World/branches?per_page=100': fixture('octocat-hello-world.branches.json'),
+      '/repos/octocat/Hello-World/git/matching-refs/heads/': fixture('octocat-hello-world.matching-refs.json'),
       '/repos/octocat/Hello-World/tags?per_page=100': fixture('actions-checkout.tags.json'),
     });
     const res = await p.listRefs(cred, repo);
@@ -84,6 +84,16 @@ describe('GitHubProvider (recorded responses)', () => {
     if (!res.ok) return;
     expect(res.value[0]).toEqual({ name: 'master', kind: 'branch', sha: '7fd1a60b01f91b314f59955a4e4d4e80d8edf11d' });
     expect(res.value.filter((r) => r.kind === 'tag').length).toBeGreaterThan(0);
+  });
+
+  it('listRefs lists branches through matching-refs and strips refs/heads/', async () => {
+    const { p, urls } = provider({
+      '/repos/octocat/Hello-World/git/matching-refs/heads/': fixture('octocat-hello-world.matching-refs.json'),
+      '/repos/octocat/Hello-World/tags?per_page=100': [],
+    });
+    const res = await p.listRefs(cred, repo);
+    expect(res.ok && res.value.map((r) => r.name)).toEqual(['master', 'octocat-patch-1', 'test']);
+    expect(urls.some((u) => u.includes('/branches'))).toBe(false);
   });
 
   it('resolveRef returns the commit, its tree and parents', async () => {

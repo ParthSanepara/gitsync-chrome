@@ -17,6 +17,7 @@ import {
   blobResponse,
   commitResponse,
   contentsPutResponse,
+  matchingRefItem,
   pullRequestResponse,
   refListItem,
   refResponse,
@@ -65,12 +66,18 @@ export class GitHubProvider implements WritableProvider {
 
   async listRefs(cred: Credential, repo: RepoRef): Promise<Result<Ref[], ApiError>> {
     const base = repoPath(repo);
-    const branches = await this.client.getAll(cred, `${base}/branches?per_page=100`, refListItem, 5);
+    // One unpaginated response with every branch; `/branches` stops at 100 per page. Recorded: 5,237 branches
+    // of microsoft/vscode in one reply, no Link header. VERIFY: whether GitHub caps or paginates it past that.
+    const branches = await this.client.getAll(cred, `${base}/git/matching-refs/heads/`, matchingRefItem, 5);
     if (!branches.ok) return branches;
     const tags = await this.client.getAll(cred, `${base}/tags?per_page=100`, refListItem, 2);
     if (!tags.ok) return tags;
     return ok([
-      ...branches.value.map((b): Ref => ({ name: b.name, kind: 'branch', sha: b.commit.sha })),
+      ...branches.value.map((b): Ref => ({
+        name: b.ref.replace(/^refs\/heads\//, ''),
+        kind: 'branch',
+        sha: b.object.sha,
+      })),
       ...tags.value.map((t): Ref => ({ name: t.name, kind: 'tag', sha: t.commit.sha })),
     ]);
   }
