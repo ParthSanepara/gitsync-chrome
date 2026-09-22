@@ -12,6 +12,9 @@ Design background: [plan 0002](plans/0002-foundation-release.md), decisions 0004
    - `feat:` → minor, `fix:` → patch, `feat!:` / `BREAKING CHANGE:` → major.
    - `docs:`, `chore:`, `ci:`, `test:`, `refactor:` do not trigger a release by themselves.
 3. Merge the release PR. release-please tags `vX.Y.Z` and creates a GitHub release.
+   The `release-branch` job then creates **`release/vX.Y.Z`** at the tagged commit: a frozen copy of
+   exactly what shipped, one branch per release. Never commit to, rebase, or delete a `release/*`
+   branch (see A.2). A fix to an old release is a new release from `main`.
 4. The `build` job builds the zip from the tag and attaches it to the GitHub release.
 5. The `publish` job (GitHub Environment `chrome-web-store`) runs
    `wxt submit` with Chrome Web Store API v2. This uploads the zip and submits it for review.
@@ -39,6 +42,9 @@ strictly higher than the last upload, and a manual upload breaks the pipeline.
    When the repo goes public or the plan is upgraded, turn them into a ruleset: require a PR, require status
    checks `Lint, typecheck, test, build` and `Conventional commit title`, block force pushes and deletions,
    require linear history.
+   Add a second ruleset targeting `release/*`: restrict updates, block force pushes, and restrict
+   deletions, so release branches are enforced read-only. Until then, the `release-branch` job refuses
+   to move an existing one, but nothing stops a manual push.
 
 3. **Merge settings** (Settings → General): allow squash merging only. Default squash message: _Pull request title_.
    Enable "Automatically delete head branches".
