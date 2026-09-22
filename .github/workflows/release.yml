@@ -31,6 +31,33 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # A frozen branch per release, release/vX.Y.Z, at the tagged commit (DECISIONS 0019).
+  # Created once and never moved: a rerun that finds it elsewhere fails instead of overwriting.
+  release-branch:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Create release/${{ needs.release-please.outputs.tag_name }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          branch="release/$TAG"
+          if existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq .object.sha 2>/dev/null); then
+            if [ "$existing" = "$sha" ]; then
+              echo "$branch already points at $sha"
+              exit 0
+            fi
+            echo "::error::$branch points at $existing, not $TAG ($sha). Release branches are never moved."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$branch" -f sha="$sha" --silent
+          echo "::notice::Created $branch at $sha"
+
   build:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
