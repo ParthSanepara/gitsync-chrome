@@ -532,6 +532,13 @@ document. Answers the questions that can invalidate the design.
 If the clone+push fails, git-clone is dropped and full history falls back to a
 generated GitHub Actions workflow. **Do not start M1 before M0 passes.**
 
+> This gate was not honored: `src/engines/gitClone.ts` and `entrypoints/offscreen/`
+> shipped directly against §8.3 without running these experiments (DECISIONS
+> 0016). Q1-Q3 below are still open; `spike/` is still the way to close them
+> against a real repository, and the code ships with `// VERIFY:`-tagged
+> placeholders (`GIT_CLONE_MAX_REPO_KB`, the `x-access-token` auth form) standing
+> in for their answers.
+
 ### M1 — Headless core
 - [ ] GitHub client: auth header, exponential backoff, rate-limit header tracking
 - [ ] zod schemas for every response consumed

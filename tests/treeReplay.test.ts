@@ -32,6 +32,20 @@ describe('treeReplay.execute', () => {
     expect(progress.filter((p) => p.phase === 'uploading').at(-1)).toMatchObject({ done: 2, total: 2 });
   });
 
+  it('uses an edited commit message when the plan carries one', async () => {
+    const sim = scenario();
+    const plan = await planFor(sim);
+    await run(sim, { ...plan, commitMessage: 'Custom message' });
+    expect(sim.commitsMade[0]?.message).toBe('Custom message');
+  });
+
+  it('falls back to the default commit message when the edit is left blank', async () => {
+    const sim = scenario();
+    const plan = await planFor(sim);
+    await run(sim, { ...plan, commitMessage: '   ' });
+    expect(sim.commitsMade[0]?.message).toBe('Sync me/src@main (src1)');
+  });
+
   it('moves the branch last, so an earlier failure leaves the target untouched', async () => {
     const sim = scenario();
     const plan = await planFor(sim);

@@ -22,7 +22,8 @@ export function PlanView({
   onRun: () => void;
 }) {
   const { estimate: e } = plan;
-  const isCopy = plan.engine === 'ref-copy';
+  // Both engines move the target branch straight to the source commit instead of diffing files.
+  const movesRef = plan.engine === 'ref-copy' || plan.engine === 'git-clone';
   return (
     <section
       className="flex flex-col gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-700"
@@ -39,11 +40,14 @@ export function PlanView({
 
       {plan.blockers.length === 0 && (
         <dl className="flex flex-col gap-1">
-          {isCopy ? (
-            <Row
-              label="Target branch"
-              value={plan.target.exists ? 'moves to the source commit' : 'created at the source commit'}
-            />
+          {movesRef ? (
+            <>
+              <Row
+                label="Target branch"
+                value={plan.target.exists ? 'moves to the source commit' : 'created at the source commit'}
+              />
+              {plan.engine === 'git-clone' && <Row label="Repository size" value={fmtBytes(e.bytes)} />}
+            </>
           ) : (
             <>
               <Row label="Files changed" value={e.filesChanged} />
@@ -54,8 +58,12 @@ export function PlanView({
           {plan.pullRequest && (
             <Row label="Pull request" value={`${plan.pullRequest.head} → ${plan.pullRequest.base}`} />
           )}
-          <Row label="Commits created" value={e.commits} />
-          <Row label="GitHub API calls" value={`~${e.apiCalls}`} />
+          {plan.engine !== 'git-clone' && (
+            <>
+              <Row label="Commits created" value={e.commits} />
+              <Row label="GitHub API calls" value={`~${e.apiCalls}`} />
+            </>
+          )}
         </dl>
       )}
 

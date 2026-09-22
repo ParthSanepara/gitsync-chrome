@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { err, ok, type ApiError, type Result } from '@/src/errors';
 import type { PlanRequest } from '@/src/plan';
-import { buildPlan, MAX_BLOB_BYTES } from '@/src/planner';
+import { buildPlan, GIT_CLONE_MAX_REPO_KB, MAX_BLOB_BYTES } from '@/src/planner';
 import type { BranchState, Commit, Credential, Provider, RateLimit, Repo, TreeEntry } from '@/src/providers/types';
 
 const oauth = (scopes: string[]): Credential => ({
@@ -109,6 +109,16 @@ describe('snapshot / tree-replay', () => {
     expect(p.blockers).toEqual([]);
     expect(codes(p.warnings)).toContain('sha_not_preserved');
     expect(p.target).toMatchObject({ exists: true, currentSha: 'tgt1', empty: false });
+    expect(p.commitMessage).toBe('Sync me/src@main (src1)');
+  });
+
+  it('only proposes a commit message for the one-new-commit engine', async () => {
+    const snapshot = await plan(world());
+    expect(snapshot.commitMessage).toBeDefined();
+    const refCopy = await plan(world({ reachable: true, branches: {} }), request({ mode: 'full' }));
+    expect(refCopy.commitMessage).toBeUndefined();
+    const gitClone = await plan(world({ reachable: false }), request({ mode: 'full' }));
+    expect(gitClone.commitMessage).toBeUndefined();
   });
 
   it('skips uploading a file whose content already exists elsewhere in the target', async () => {
@@ -253,23 +263,48 @@ describe('engine selection', () => {
     ]);
   });
 
-  it('full history without a shared object store → git-clone, unavailable for now', async () => {
+  it('full history without a shared object store → git-clone, runnable when the repo is small and clean', async () => {
     const p = await plan(
       world({ reachable: false }),
       request({ mode: 'full', source: { repo: repo('me/src', { sizeKb: 2048 }), ref: 'main' } }),
     );
     expect(p.engine).toBe('git-clone');
-    expect(p.blockers).toContainEqual({ code: 'engine_unavailable', engine: 'git-clone' });
+    expect(p.blockers).toEqual([]);
     expect(p.estimate.bytes).toBe(2048 * 1024);
     expect(codes(p.warnings)).toContain('fork_probe_failed');
   });
 
-  it('small last-N → tree-replay but unsupported for now; large last-N → git-clone', async () => {
+  it('git-clone where the target already has that commit → already in sync', async () => {
+    const w = world({ reachable: false, branches: { 'me/dst#main': { state: 'exists', sha: 'src1' } } });
+    expect(codes((await plan(w, request({ mode: 'full' }))).blockers)).toEqual(['already_in_sync']);
+  });
+
+  it('git-clone blocks a source repo over the size ceiling', async () => {
+    const p = await plan(
+      world({ reachable: false }),
+      request({ mode: 'full', source: { repo: repo('me/src', { sizeKb: GIT_CLONE_MAX_REPO_KB + 1 }), ref: 'main' } }),
+    );
+    expect(p.blockers).toContainEqual({
+      code: 'repo_too_large_for_clone',
+      sizeKb: GIT_CLONE_MAX_REPO_KB + 1,
+      limitKb: GIT_CLONE_MAX_REPO_KB,
+    });
+  });
+
+  it('git-clone blocks Git LFS repos too', async () => {
+    const w = world({ reachable: false, blobs: { GA: '*.psd filter=lfs diff=lfs merge=lfs -text\n' } });
+    w.trees.srcTree = { entries: [blob('a.txt', 'A'), blob('.gitattributes', 'GA')] };
+    const p = await plan(w, request({ mode: 'full' }));
+    expect(p.blockers).toContainEqual({ code: 'lfs_detected', path: '.gitattributes' });
+  });
+
+  it('small last-N → tree-replay but unsupported for now; large last-N → git-clone but unsupported too', async () => {
     const small = await plan(world(), request({ mode: 'lastN', n: 5 }));
     expect(small.engine).toBe('tree-replay');
     expect(small.blockers).toContainEqual({ code: 'unsupported', what: 'last-n' });
     const large = await plan(world(), request({ mode: 'lastN', n: 500 }));
     expect(large.engine).toBe('git-clone');
+    expect(large.blockers).toContainEqual({ code: 'unsupported', what: 'last-n' });
   });
 
   it('does not probe the fork network for snapshot mode', async () => {

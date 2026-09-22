@@ -1,4 +1,5 @@
-import { err, type Result, type SyncError } from '@/src/errors';
+import type { Result, SyncError } from '@/src/errors';
+import { gitClone } from '@/src/engines/gitClone';
 import { refCopy } from '@/src/engines/refCopy';
 import { treeReplay } from '@/src/engines/treeReplay';
 import type { Progress, SyncResult } from '@/src/engines/types';
@@ -19,6 +20,6 @@ export function runSync(
     case 'ref-copy':
       return refCopy.execute(provider, plan, credentials, onProgress, signal);
     case 'git-clone':
-      return Promise.resolve(err({ code: 'not_supported', engine: plan.engine }));
+      return gitClone.execute(provider, plan, credentials, onProgress, signal);
   }
 }

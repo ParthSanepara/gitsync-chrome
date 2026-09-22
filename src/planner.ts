@@ -1,7 +1,7 @@
 import { ok, type ApiError, type EngineId, type PlanBlocker, type PlanWarning, type Result } from '@/src/errors';
-import type { PlanRequest, SyncPlan } from '@/src/plan';
+import { defaultCommitMessage, type PlanRequest, type SyncPlan } from '@/src/plan';
 import { branchNameConflict, prBranchName } from '@/src/gitRefs';
-import type { BranchState, Provider, TreeEntry } from '@/src/providers/types';
+import type { BranchState, Credential, Provider, RepoRef, TreeEntry } from '@/src/providers/types';
 import { diffTrees } from '@/src/treeDiff';
 
 // SPEC §14 rule 4: this file imports Provider, never a concrete client.
@@ -10,6 +10,8 @@ import { diffTrees } from '@/src/treeDiff';
 export const MAX_BLOB_BYTES = 100 * 1024 * 1024;
 /** Largest `lastN` that tree-replay handles. Beyond this a real clone is cheaper. VERIFY in M0. */
 export const TREE_REPLAY_MAX_N = 20;
+/** Repo size above which a real clone risks the offscreen document's IndexedDB/memory limits. VERIFY in M0 (SPEC §8.3, §15 Q2). */
+export const GIT_CLONE_MAX_REPO_KB = 500 * 1024;
 /** Tree entries sent per create-tree call when chunking with base_tree. VERIFY the real limit. */
 export const TREE_CHUNK = 1000;
 /** API calls left untouched so the user's other GitHub work keeps running. */
@@ -114,8 +116,20 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
     return ok(finish(provider, { ...base, estimate: { ...zero, apiCalls: 1 }, warnings, blockers }));
   }
 
+  // git-clone only replays full history (SPEC §7). A large lastN picked it above as "cheaper than
+  // tree-replay", but lastN-via-clone (a shallow fetch replayed forward) is not built yet either.
+  if (engine === 'git-clone' && req.mode !== 'full') {
+    blockers.push({ code: 'unsupported', what: 'last-n' });
+    return ok(finish(provider, { ...base, estimate: zero, warnings, blockers }));
+  }
+
   if (engine === 'git-clone') {
-    blockers.push({ code: 'engine_unavailable', engine });
+    if (branch.value.state === 'exists' && branch.value.sha === commit.value.sha) {
+      blockers.push({ code: 'already_in_sync' });
+    }
+    const guardrails = await checkGitCloneGuardrails(provider, req, commit.value.treeSha);
+    if (!guardrails.ok) return guardrails;
+    blockers.push(...guardrails.value);
     const bytes = (source.repo.sizeKb ?? 0) * 1024;
     return ok(finish(provider, { ...base, estimate: { ...zero, bytes }, warnings, blockers }));
   }
@@ -132,7 +146,15 @@ export async function buildPlan(provider: Provider, req: PlanRequest): Promise<R
   if (!analysis.ok) return analysis;
   blockers.push(...analysis.value.blockers);
   warnings.push(...analysis.value.warnings);
-  return ok(finish(provider, { ...base, estimate: analysis.value.estimate, warnings, blockers }));
+  return ok(
+    finish(provider, {
+      ...base,
+      commitMessage: defaultCommitMessage(base.source),
+      estimate: analysis.value.estimate,
+      warnings,
+      blockers,
+    }),
+  );
 }
 
 function addTargetChecks(
@@ -212,18 +234,9 @@ async function analyseSnapshot(
     }
   }
 
-  // Pushing LFS pointers without their objects silently corrupts the target, so refuse (SPEC §8.3).
-  const attributes = sourceEntries.filter(
-    (e) => e.type === 'blob' && (e.path === '.gitattributes' || e.path.endsWith('/.gitattributes')),
-  );
-  for (const a of attributes.slice(0, MAX_GITATTRIBUTES_READS)) {
-    const text = await provider.readBlobText(credentials.source, source.repo, a.sha);
-    if (!text.ok) return text;
-    if (/filter\s*=\s*lfs/i.test(text.value)) {
-      blockers.push({ code: 'lfs_detected', path: a.path });
-      break;
-    }
-  }
+  const lfs = await detectLfs(provider, credentials.source, source.repo, sourceEntries);
+  if (!lfs.ok) return lfs;
+  if (lfs.value) blockers.push(lfs.value);
 
   const changedEntries = changed.length + deleted.length;
   const treeCalls = Math.max(1, Math.ceil(changedEntries / TREE_CHUNK));
@@ -236,6 +249,55 @@ async function analyseSnapshot(
     blockers,
     warnings,
   });
+}
+
+/**
+ * Pushing LFS pointers without their objects silently corrupts the target, so refuse (SPEC §8.3).
+ * Best-effort: only the first `MAX_GITATTRIBUTES_READS` `.gitattributes` files are read.
+ */
+async function detectLfs(
+  provider: Provider,
+  cred: Credential,
+  repo: RepoRef,
+  entries: TreeEntry[],
+): Promise<Result<PlanBlocker | undefined, ApiError>> {
+  const attributes = entries.filter(
+    (e) => e.type === 'blob' && (e.path === '.gitattributes' || e.path.endsWith('/.gitattributes')),
+  );
+  for (const a of attributes.slice(0, MAX_GITATTRIBUTES_READS)) {
+    const text = await provider.readBlobText(cred, repo, a.sha);
+    if (!text.ok) return text;
+    if (/filter\s*=\s*lfs/i.test(text.value)) return ok({ code: 'lfs_detected', path: a.path });
+  }
+  return ok(undefined);
+}
+
+/**
+ * git-clone bypasses the tree/blob REST endpoints entirely (SPEC §8.3), so it needs its own guardrails
+ * instead of `analyseSnapshot`'s tree diff: a size ceiling for the offscreen document, and an LFS scan.
+ * A truncated tree listing does not block full-history mode the way it blocks tree-replay — git-clone
+ * does not depend on the listing to do the actual copy, only to scan for `.gitattributes`.
+ */
+async function checkGitCloneGuardrails(
+  provider: Provider,
+  req: PlanRequest,
+  sourceTreeSha: string,
+): Promise<Result<PlanBlocker[], ApiError>> {
+  const { source, credentials } = req;
+  const blockers: PlanBlocker[] = [];
+
+  const sizeKb = source.repo.sizeKb ?? 0;
+  if (sizeKb > GIT_CLONE_MAX_REPO_KB) {
+    blockers.push({ code: 'repo_too_large_for_clone', sizeKb, limitKb: GIT_CLONE_MAX_REPO_KB });
+  }
+
+  const tree = await provider.getTree(credentials.source, source.repo, sourceTreeSha);
+  if (!tree.ok) return tree;
+  const lfs = await detectLfs(provider, credentials.source, source.repo, tree.value.entries);
+  if (!lfs.ok) return lfs;
+  if (lfs.value) blockers.push(lfs.value);
+
+  return ok(blockers);
 }
 
 /** Adds the rate-limit budget check, which needs the final API-call estimate. */

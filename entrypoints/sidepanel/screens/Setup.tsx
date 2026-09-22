@@ -138,14 +138,14 @@ export function Setup({ credential, onGrantWorkflow }: { credential: Credential;
     else setError(describeApiError(res.error));
   }
 
-  async function startRun() {
+  async function startRun(commitMessage?: string) {
     if (!plan) return;
     const controller = new AbortController();
     abort.current = controller;
     setRun({ status: 'running' });
     const res = await runSync(
       provider,
-      plan,
+      commitMessage !== undefined ? { ...plan, commitMessage } : plan,
       { source: credential, target: credential },
       (progress) => setRun((prev) => (prev.status === 'running' ? { status: 'running', progress } : prev)),
       controller.signal,
@@ -167,7 +167,7 @@ export function Setup({ credential, onGrantWorkflow }: { credential: Credential;
       <RunPanel
         plan={plan}
         run={run}
-        onConfirm={() => void startRun()}
+        onConfirm={(commitMessage) => void startRun(commitMessage)}
         onCancel={() => abort.current?.abort()}
         onBack={() => setRun({ status: 'idle' })}
         onReset={resetRun}

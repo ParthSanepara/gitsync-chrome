@@ -1,6 +1,11 @@
 import type { EngineId, PlanBlocker, PlanWarning } from '@/src/errors';
 import type { Commit, Credential, Repo } from '@/src/providers/types';
 
+/** The commit message tree-replay proposes for its one new commit, before the user edits it. */
+export function defaultCommitMessage(source: { repo: Repo; ref: string; commit: Commit }): string {
+  return `Sync ${source.repo.fullName}@${source.ref} (${source.commit.sha.slice(0, 7)})`;
+}
+
 export type HistoryMode = 'snapshot' | 'lastN' | 'full';
 export type WriteMode = 'push' | 'force-push' | 'pull-request';
 
@@ -38,6 +43,12 @@ export interface SyncPlan {
   engine: EngineId;
   /** Shown verbatim in the preview. */
   engineReason: string;
+  /**
+   * Set only when the engine creates exactly one new commit (tree-replay, snapshot mode). The preview
+   * shows it pre-filled with `defaultCommitMessage`; the user may edit it before confirming (SPEC §14
+   * rule 8 stays satisfied: this changes text on a commit the sync already makes, not a new feature).
+   */
+  commitMessage?: string;
   estimate: {
     filesChanged: number;
     blobsToUpload: number;

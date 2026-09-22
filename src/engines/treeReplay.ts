@@ -1,7 +1,7 @@
 import { err, ok, type Result, type SyncError } from '@/src/errors';
 import { failed, mapWriteError, openPullRequestIfNeeded } from '@/src/engines/shared';
 import type { Engine, Progress, SyncResult } from '@/src/engines/types';
-import type { SyncPlan } from '@/src/plan';
+import { defaultCommitMessage, type SyncPlan } from '@/src/plan';
 import { TREE_CHUNK } from '@/src/planner';
 import type { Credential, TreeEntry, TreeWrite, WritableProvider } from '@/src/providers/types';
 import { diffTrees } from '@/src/treeDiff';
@@ -150,11 +150,12 @@ async function run(
   }
   if (!treeSha) return err({ code: 'plan_blocked' });
 
-  // 3. One commit on top of the target tip (parentless for a brand-new branch).
+  // 3. One commit on top of the target tip (parentless for a brand-new branch). The message is the
+  // planner's default (SPEC §7), possibly edited by the user in the confirm step; never blank.
   say('committing', 0, 1, 'Creating the commit');
-  const short = source.commit.sha.slice(0, 7);
+  const message = plan.commitMessage?.trim() || defaultCommitMessage(source);
   const commit = await provider.createCommit(tCred, target.repo, {
-    message: `Sync ${source.repo.fullName}@${source.ref} (${short})`,
+    message,
     treeSha,
     parents: tipSha ? [tipSha] : [],
   });

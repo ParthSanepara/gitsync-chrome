@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { SyncResult, Progress } from '@/src/engines/types';
 import type { SyncPlan } from '@/src/plan';
 
@@ -11,7 +12,8 @@ export type RunState =
 interface Props {
   plan: SyncPlan;
   run: RunState;
-  onConfirm: () => void;
+  /** The commit message to use, when `plan.commitMessage` is set and the user may have edited it. */
+  onConfirm: (commitMessage?: string) => void;
   onCancel: () => void;
   onBack: () => void;
   onReset: () => void;
@@ -24,6 +26,9 @@ const secondary =
 
 export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Props) {
   const to = `${plan.target.repo.fullName}@${plan.target.branch}`;
+  // Only set for the one-new-commit engines (tree-replay, snapshot mode). Re-initializes whenever a
+  // fresh plan mounts this component; Setup.tsx unmounts it between previews (SPEC §7).
+  const [commitMessage, setCommitMessage] = useState(plan.commitMessage ?? '');
 
   if (run.status === 'confirm') {
     return (
@@ -48,6 +53,15 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
               </strong>
               , keeping its full history.
             </>
+          ) : plan.engine === 'git-clone' ? (
+            <>
+              This clones the full history of{' '}
+              <strong>
+                {plan.source.repo.fullName}@{plan.source.ref}
+              </strong>{' '}
+              and pushes it to <strong>{to}</strong>, preserving the original commits. This can take a while for a large
+              repository.
+            </>
           ) : (
             <>
               This copies the latest commit of{' '}
@@ -58,13 +72,24 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
             </>
           )}
         </p>
+        {plan.commitMessage !== undefined && (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-slate-500">Commit message</span>
+            <textarea
+              className="rounded-md border border-slate-400 p-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              rows={2}
+              value={commitMessage}
+              onChange={(e) => setCommitMessage(e.target.value)}
+            />
+          </label>
+        )}
         {plan.write === 'force-push' && (
           <p className="text-sm text-amber-700 dark:text-amber-400">
             Force push is on: the target branch can be overwritten.
           </p>
         )}
         <div className="flex gap-2">
-          <button className={primary} onClick={onConfirm}>
+          <button className={primary} onClick={() => onConfirm(commitMessage)}>
             Sync now
           </button>
           <button className={secondary} onClick={onBack}>
@@ -101,7 +126,9 @@ export function RunPanel({ plan, run, onConfirm, onCancel, onBack, onReset }: Pr
         <p className="text-sm">
           {plan.engine === 'ref-copy'
             ? `${to} now points at the source commit.`
-            : `${run.result.filesChanged} file(s) changed, ${run.result.blobsUploaded} uploaded, in one commit on ${to}.`}
+            : plan.engine === 'git-clone'
+              ? `${to} now has the full history of the source branch, ending at ${run.result.commitSha.slice(0, 7)}.`
+              : `${run.result.filesChanged} file(s) changed, ${run.result.blobsUploaded} uploaded, in one commit on ${to}.`}
         </p>
         {run.result.pullRequestUrl && (
           <a className={primary + ' text-center'} href={run.result.pullRequestUrl} target="_blank" rel="noreferrer">

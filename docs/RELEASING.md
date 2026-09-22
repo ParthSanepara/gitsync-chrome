@@ -62,7 +62,8 @@ strictly higher than the last upload, and a manual upload breaks the pipeline.
    - Permission justifications (keep in sync with `wxt.config.ts` and SPEC §11):
      - `sidePanel`: "The extension's interface is a side panel so a long-running sync stays visible while the user works in other tabs."
      - `storage`: "Keeps the user's GitHub sign-in token in session storage (cleared when the browser closes) so they stay signed in while using the side panel."
-     - `https://github.com/*`: "Required to sign in with GitHub. GitHub's device-flow login endpoints (github.com/login/*) do not allow cross-origin requests, so the extension needs host access to call them directly from the user's browser, with no third-party server involved."
+     - `https://github.com/*`: "Required to sign in with GitHub, and to perform git clone and push operations over HTTPS directly from the user's browser for full-history syncs, so that repository contents are never routed through any third-party server. GitHub's device-flow login endpoints (github.com/login/*) also do not allow cross-origin requests, so the extension needs host access to call them directly."
+     - `offscreen`: "Sync operations run for minutes; the extension service worker is terminated while idle and cannot host them."
    - Data usage: no user data collected. Tick the three certification boxes.
    - Privacy policy URL: GitHub Pages URL of `PRIVACY.md` (see D).
 5. **Distribution**: visibility **Unlisted**.

@@ -22,6 +22,9 @@
     "icons": "for s in 16 32 48 128; do rsvg-convert -w 128 -h 128 assets/icon.svg -o public/icon/128.png; done"
   },
   "dependencies": {
+    "@isomorphic-git/lightning-fs": "^4.8.0",
+    "buffer": "^6.0.3",
+    "isomorphic-git": "^1.42.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.5"

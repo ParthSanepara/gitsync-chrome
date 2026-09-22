@@ -91,7 +91,7 @@ export type PlanBlocker =
   | { code: 'needs_force' }
   | { code: 'pr_base_missing' }
   | { code: 'branch_name_conflict'; existing: string }
-  | { code: 'engine_unavailable'; engine: EngineId }
+  | { code: 'repo_too_large_for_clone'; sizeKb: number; limitKb: number }
   | { code: 'unsupported'; what: 'last-n' };
 
 export type PlanWarning =
@@ -130,10 +130,8 @@ export function describePlanBlocker(b: PlanBlocker): string {
       return 'A pull request needs the target branch to exist already, because that is what it merges into.';
     case 'branch_name_conflict':
       return `The branch name conflicts with the existing branch "${b.existing}". Git cannot have both "a" and "a/b".`;
-    case 'engine_unavailable':
-      return b.engine === 'git-clone'
-        ? 'Full history between repositories that are not forks of each other is not available yet.'
-        : `The ${b.engine} engine is not available yet.`;
+    case 'repo_too_large_for_clone':
+      return `The source repository is ${mb(b.sizeKb * 1024)}, over the ${mb(b.limitKb * 1024)} limit for a full-history clone in the browser.`;
     case 'unsupported':
       return b.what === 'last-n'
         ? 'Last-N-commits sync is not available yet.'
@@ -171,7 +169,11 @@ export type SyncError =
   | { code: 'protected_branch' }
   | { code: 'secret_scanning'; message: string }
   /** The branch was updated but opening the pull request failed. */
-  | { code: 'pr_failed'; message: string };
+  | { code: 'pr_failed'; message: string }
+  /** The offscreen document (SPEC §8.3, §10) could not be created or reached. */
+  | { code: 'offscreen_unavailable' }
+  | { code: 'clone_failed'; message: string }
+  | { code: 'push_failed'; message: string };
 
 export function describeSyncError(e: SyncError): string {
   switch (e.code) {
@@ -191,6 +193,12 @@ export function describeSyncError(e: SyncError): string {
       return `GitHub blocked this because it found what looks like a secret (push protection). It cannot be bypassed from here. ${e.message}`;
     case 'pr_failed':
       return `The branch was updated, but the pull request could not be opened: ${e.message}`;
+    case 'offscreen_unavailable':
+      return 'Could not start the background process that runs git. Reload the extension and try again.';
+    case 'clone_failed':
+      return `Cloning the source repository failed: ${e.message}`;
+    case 'push_failed':
+      return `Pushing to the target repository failed: ${e.message}`;
     default:
       return describeApiError(e);
   }
