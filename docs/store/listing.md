@@ -70,8 +70,6 @@ PRIVACY
 
 ```text
 GitSync syncs branches between GitHub repositories. The user picks a source branch in one GitHub repository and a target repository they can write to, and GitSync copies the branch there, either by pushing directly or by opening a pull request. Everything runs locally in the browser with no GitSync server. The extension has no other features.
-
-This early preview version (0.1.0) installs the side panel that will host the sync interface. Branch syncing arrives in upcoming releases.
 ```
 
 **Permission justifications** (keep in sync with `wxt.config.ts` and SPEC §11):
@@ -109,9 +107,12 @@ When the user opens the side panel, lets it read the URL of the tab they had ope
 **Are you using remote code?** No, I am not using remote code. (All JavaScript is bundled in the
 package. No external scripts, no `eval`, no remotely fetched code.)
 
-**Data usage:** tick no data types. Tick all three certifications.
+**Data usage** (from 0.2.0; v0.1.0 ticked none): tick **Authentication information** (the GitHub
+token, stored on the device and sent only to GitHub) and **Website content** (repository files read from
+and written to GitHub). Nothing is sent to the developer. Tick all three certifications.
 
-**Privacy policy URL:** the public Gist of `PRIVACY.md` (`docs/RELEASING.md` §D).
+**Privacy policy URL:** `https://github.com/ParthSanepara/gitsync-chrome/blob/main/PRIVACY.md` (the repo
+is public, so no Gist is needed; plan 0005 gate 3).
 
 ## Notes
 

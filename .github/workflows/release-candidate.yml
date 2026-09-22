@@ -1,0 +1,77 @@
+name: Release candidate
+
+# Step 2 of a release (docs/RELEASING.md, DECISIONS 0021): tag the head of release/vX.Y.Z as the next
+# vX.Y.Z-rc.N and publish it as a GitHub pre-release with the zip. Runs after Cut release, and again
+# whenever a hotfix is merged into the release branch.
+on:
+  push:
+    branches: ['release/v*']
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-candidate-${{ inputs.branch || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      BRANCH: ${{ inputs.branch || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0 # tags, to number the candidate
+      - name: Pick the candidate tag
+        id: tag
+        run: |
+          version="${BRANCH#release/v}"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is already released; its branch takes no more candidates."
+            exit 1
+          fi
+          if existing=$(git tag --points-at HEAD --list "v$version-rc.*" | head -1) && [ -n "$existing" ]; then
+            echo "::notice::HEAD is already $existing"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last=$(git tag --list "v$version-rc.*" | sed 's/.*-rc\.//' | sort -n | tail -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version-rc.$(( ${last:-0} + 1 ))" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/setup
+        if: steps.tag.outputs.skip != 'true'
+      - name: Check and build
+        if: steps.tag.outputs.skip != 'true'
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm zip
+          scripts/check-prod-bundle.sh
+      - name: Tag and publish the pre-release
+        if: steps.tag.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          git tag "$TAG"
+          git push origin "$TAG"
+          {
+            echo "Release candidate for v$VERSION, built from \`$BRANCH\`. Not in the Chrome Web Store."
+            echo
+            echo "Test the zip below. If it is good, run **Finalize release** with version \`$VERSION\`."
+            echo "If not, merge a fix into \`$BRANCH\`; that builds the next candidate."
+            echo
+            node scripts/prepare-release.mjs notes "$VERSION"
+          } > notes.md
+          gh release create "$TAG" .output/*-chrome.zip --prerelease --verify-tag --title "$TAG" --notes-file notes.md

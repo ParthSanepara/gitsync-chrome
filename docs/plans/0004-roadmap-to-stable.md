@@ -2,6 +2,9 @@
 
 - Date: 2026-09-17
 - Status: v0.1.0 submitted to the Chrome Web Store, in review. Roadmap tracked as GitHub issues #6–#37.
+- Note (2026-09-23): release-please was replaced by release branches with candidates (DECISIONS 0021).
+  Where this plan says "release PR", read **Cut release** / **Finalize release**; `Release-As` becomes
+  the version typed at cut.
 
 ## Context
 

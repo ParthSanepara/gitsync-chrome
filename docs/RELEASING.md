@@ -3,43 +3,61 @@
 How a change reaches the Chrome Web Store, plus the one-time setup the pipeline depends on.
 Design background: [plan 0002](plans/0002-foundation-release.md), decisions 0004–0008.
 
-## Normal flow (automated)
+## Normal flow
 
-1. Open a PR against `main` with a **conventional-commit title** (`feat: …`, `fix: …`, `chore: …`).
-   CI (`ci.yml`) and the PR-title check (`pr-title.yml`) must pass. Squash-merge.
-2. `release.yml` runs on every push to `main`. release-please opens or updates a
-   **release PR** that bumps `package.json`, `.release-please-manifest.json`, and `CHANGELOG.md`.
-   - `feat:` → minor, `fix:` → patch, `feat!:` / `BREAKING CHANGE:` → major.
-   - `docs:`, `chore:`, `ci:`, `test:`, `refactor:` do not trigger a release by themselves.
-3. Merge the release PR. release-please tags `vX.Y.Z` and creates a GitHub release.
-   The `release-branch` job then creates **`release/vX.Y.Z`** at the tagged commit: a frozen copy of
-   exactly what shipped, one branch per release. Never commit to, rebase, or delete a `release/*`
-   branch (see A.2). A fix to an old release is a new release from `main`.
-4. The `build` job builds the zip from the tag and attaches it to the GitHub release.
-5. The `publish` job (GitHub Environment `chrome-web-store`) runs
-   `wxt submit` with Chrome Web Store API v2. This uploads the zip and submits it for review.
-   It is skipped, with a notice, while the store secrets are missing.
-6. Google reviews it (hours to days). It goes live with the item's current visibility (Unlisted).
+Every release has its own branch, `release/vX.Y.Z`, and is tested as a candidate before it ships
+(DECISIONS 0021). Only one release is open at a time.
 
-The manifest version comes from `package.json`. **Never edit the version by hand, and never upload
-a zip in the dashboard after automation is live.** The store rejects any version that is not
-strictly higher than the last upload, and a manual upload breaks the pipeline.
+1. **Develop on `main`.** Open PRs with a **conventional-commit title** (`feat: …`, `fix: …`,
+   `chore: …`). CI (`ci.yml`) and the PR-title check (`pr-title.yml`) must pass. Squash-merge.
+   The titles become the changelog: `feat:` → Features, `fix:` → Bug Fixes, `perf:` → Performance,
+   `!` or a `BREAKING CHANGE:` footer → Breaking changes. Other types are left out. A squash commit
+   body with a `BEGIN_COMMIT_OVERRIDE` … `END_COMMIT_OVERRIDE` block lists several entries instead.
+2. **Cut.** Actions → **Cut release** → version `X.Y.Z`. Pick it by semver: breaking change → major,
+   any `feat:` → minor, otherwise patch (before 1.0.0, breaking changes bump the minor). The workflow:
+   - creates `release/vX.Y.Z` from `main`,
+   - commits `chore(release): X.Y.Z` there: the `package.json` version and a new `CHANGELOG.md`
+     section (`scripts/prepare-release.mjs`),
+   - builds, tags **`vX.Y.Z-rc.1`**, and publishes it as a GitHub **pre-release** with the zip.
+3. **Test the candidate.** Install the pre-release zip unpacked and run the release's checklist.
+4. **Hotfix if needed.** Branch from `release/vX.Y.Z`, fix, open a PR **into `release/vX.Y.Z`**
+   (`fix: …`), squash-merge. **Release candidate** runs on the merge and publishes `vX.Y.Z-rc.2`, and
+   so on. Test again. Hotfix entries are not added to the changelog automatically; add a line to the
+   version's `CHANGELOG.md` section in the same PR.
+5. **Finalize.** Actions → **Finalize release** → version `X.Y.Z`. It refuses unless the branch head is
+   a candidate, then:
+   - tags **`vX.Y.Z`** on that same commit and publishes the candidate's zip, unchanged, as the release,
+   - submits it to the Chrome Web Store (`publish`, environment `chrome-web-store`; skipped with a
+     notice while the store secrets are missing, then upload the zip by hand),
+   - **freezes** `release/vX.Y.Z` by adding it to the **Frozen releases** ruleset,
+   - opens **`chore(release): merge vX.Y.Z back into main`** from a copy, `merge/vX.Y.Z`.
+6. **Merge the back-merge PR** into `main` (squash). Do it before the next cut, so `main` has the
+   version, changelog and hotfixes.
+7. Google reviews the submission (hours to days). It goes live with the item's current visibility.
+
+The manifest version comes from `package.json`, set only by **Cut release**. **Never edit the version
+by hand, and never upload a zip in the dashboard after automation is live.** The store rejects any
+version that is not strictly higher than the last upload.
+
+A frozen release is never changed. A fix for a shipped version is a new release (`X.Y.Z+1`) cut from
+`main`.
 
 ## One-time setup
 
 ### A. GitHub repository
 
-1. **Release token.** Create a fine-grained PAT (or GitHub App token) scoped to this repo with
-   _Contents_, _Issues_ (for release labels), and _Pull requests_ all set to read & write. Save it as repository secret
-   `RELEASE_PLEASE_TOKEN`.
-   Why not `GITHUB_TOKEN`: PRs it opens do not trigger workflows, so the release PR would never get CI
-   checks and could not satisfy branch protection.
+1. **Release token.** A fine-grained PAT scoped to this repo, saved as repository secret
+   `RELEASE_PLEASE_TOKEN` (the name predates DECISIONS 0021). Permissions, read & write:
+   _Contents_, _Pull requests_, and _Administration_ (Finalize edits the Frozen releases ruleset).
+   Why not `GITHUB_TOKEN`: PRs it opens do not trigger workflows, so the back-merge PR would never get
+   CI checks, and it cannot manage rulesets.
 2. **Rulesets** (Settings → Rules → Rulesets). The repo is public, so these are available
-   (DECISIONS 0020, superseding 0009). Create two:
+   (DECISIONS 0020, superseding 0009):
    - **`main`**: require a PR, require status checks `Lint, typecheck, test, build` and
      `Conventional commit title`, block force pushes and deletions, require linear history.
-   - **`release/*`**: restrict updates, block force pushes, restrict deletions. Leave "Restrict
-     creations" off, so the `release-branch` job can still create new release branches.
+   - **Frozen releases**: restrict updates, block force pushes, restrict deletions. It lists each
+     finalized `release/vX.Y.Z` by name; **Finalize release** adds them (and creates the ruleset the
+     first time). Open release branches are not in it, so hotfix PRs can merge.
 
 3. **Merge settings** (Settings → General): allow squash merging only. Default squash message: _Pull request title_.
    Enable "Automatically delete head branches".
@@ -95,22 +113,25 @@ When `PRIVACY.md` changes, update the gist in the same PR.
 
 ## Verifying the pipeline end to end
 
-After B–D, merge any `fix:` PR, then merge the resulting release PR (`v0.1.1`). Confirm:
+After B–D, run a whole release (Cut → test → Finalize). Confirm:
 
-- the GitHub release has the zip attached
+- the candidate and the final GitHub release both have the zip attached
+- `release/vX.Y.Z` is listed in the Frozen releases ruleset, and the back-merge PR is open
 - the `publish` job succeeded
 - the dashboard shows the new version as pending review
 
 ## Troubleshooting
 
-| Symptom                                          | Cause / fix                                                                                                |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Release PR has no CI checks                      | `RELEASE_PLEASE_TOKEN` missing or lacks permissions (A.1)                                                  |
-| Release PR CI fails after a fix landed on `main` | release-please only refreshes its PR when the changelog changes. Click **Update branch** on the release PR |
-| `publish` skipped with notice                    | environment secrets not set (C.4)                                                                          |
-| Upload rejected: version must be greater         | someone uploaded manually. Release a new version through the pipeline                                      |
-| Upload rejected: item has pending review         | a previous submission is still in review. Wait, or cancel it in the dashboard, then re-run the job         |
-| 401/403 from store API                           | service account email not added in dashboard (C.3), or wrong publisher ID                                  |
+| Symptom                                  | Cause / fix                                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Back-merge PR has no CI checks           | `RELEASE_PLEASE_TOKEN` missing or lacks permissions (A.1)                                                  |
+| `freeze` fails with 403                  | the release token lacks _Administration: write_ (A.1)                                                      |
+| Cut release: "still open (no final tag)" | another release branch is not finalized yet. Finalize it (or, if abandoned, delete that branch)            |
+| Finalize: "head is not a candidate"      | a hotfix was merged after the last candidate. Wait for **Release candidate**, test that one, then finalize |
+| `publish` skipped with notice            | environment secrets not set (C.4)                                                                          |
+| Upload rejected: version must be greater | someone uploaded manually. Release a new version through the pipeline                                      |
+| Upload rejected: item has pending review | a previous submission is still in review. Wait, or cancel it in the dashboard, then re-run the job         |
+| 401/403 from store API                   | service account email not added in dashboard (C.3), or wrong publisher ID                                  |
 
 ## Rotating credentials
 

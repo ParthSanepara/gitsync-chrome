@@ -1,0 +1,135 @@
+name: Finalize release
+
+# Step 3 of a release (docs/RELEASING.md, DECISIONS 0021): tag the last tested candidate as vX.Y.Z,
+# publish its zip unchanged, submit it to the store, freeze release/vX.Y.Z, and open a PR that brings
+# the release (version, changelog, hotfixes) back into main.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to finalize, X.Y.Z (its latest candidate is what ships)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: release/v${{ inputs.version }}
+          fetch-depth: 0
+      - name: Find the tested candidate
+        id: rc
+        run: |
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::v$VERSION is already released"
+            exit 1
+          fi
+          rc=$(git tag --points-at HEAD --list "v$VERSION-rc.*" | sort -t. -k4 -n | tail -1)
+          if [ -z "$rc" ]; then
+            echo "::error::The head of release/v$VERSION is not a candidate. Wait for the Release candidate run, test it, then finalize."
+            exit 1
+          fi
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+      - name: Tag v${{ inputs.version }} and publish the candidate's zip
+        env:
+          RC: ${{ steps.rc.outputs.rc }}
+        run: |
+          # The exact zip that was tested, not a rebuild.
+          gh release download "$RC" --pattern '*-chrome.zip' --dir dist
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          { echo "Ships $RC unchanged."; echo; node scripts/prepare-release.mjs notes "$VERSION"; } > notes.md
+          gh release create "v$VERSION" dist/*-chrome.zip --latest --verify-tag --title "v$VERSION" --notes-file notes.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: chrome-zip
+          path: dist/*-chrome.zip
+          if-no-files-found: error
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    # Holds the store secrets. Add required reviewers on this environment to
+    # gate every store submission behind a manual approval.
+    environment: chrome-web-store
+    env:
+      CHROME_API_VERSION: v2
+      CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+      CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+      CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
+      CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY }}
+    steps:
+      - name: Skip until store secrets exist
+        if: env.CHROME_EXTENSION_ID == ''
+        run: echo "::notice::Chrome Web Store secrets not configured; skipping submission. Upload the zip from the v$VERSION release manually (docs/RELEASING.md)."
+      - uses: actions/checkout@v7
+        if: env.CHROME_EXTENSION_ID != ''
+      - uses: ./.github/actions/setup
+        if: env.CHROME_EXTENSION_ID != ''
+      - uses: actions/download-artifact@v8
+        if: env.CHROME_EXTENSION_ID != ''
+        with:
+          name: chrome-zip
+          path: dist
+      - name: Upload and submit for review
+        if: env.CHROME_EXTENSION_ID != ''
+        run: pnpm wxt submit --chrome-zip dist/*-chrome.zip
+
+  # Rulesets need repo Administration: write, which GITHUB_TOKEN never has. RELEASE_PLEASE_TOKEN is the
+  # repo's release PAT (named for its first use); docs/RELEASING.md A.1 lists its permissions.
+  freeze:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+    steps:
+      - name: Add release/v${{ inputs.version }} to the "Frozen releases" ruleset
+        run: |
+          ref="refs/heads/release/v$VERSION"
+          api="repos/$GITHUB_REPOSITORY/rulesets"
+          id=$(gh api "$api" --jq '.[] | select(.name == "Frozen releases") | .id')
+          if [ -z "$id" ]; then
+            jq -n --arg ref "$ref" '{
+              name: "Frozen releases", target: "branch", enforcement: "active",
+              conditions: { ref_name: { include: [$ref], exclude: [] } },
+              rules: [{ type: "update" }, { type: "deletion" }, { type: "non_fast_forward" }]
+            }' | gh api -X POST "$api" --input - --silent
+          else
+            gh api "$api/$id" |
+              jq --arg ref "$ref" '{ name, target, enforcement, bypass_actors, rules,
+                conditions: (.conditions | .ref_name.include |= ((. + [$ref]) | unique)) }' |
+              gh api -X PUT "$api/$id" --input - --silent
+          fi
+          echo "::notice::release/v$VERSION is frozen"
+
+  back-to-main:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      # A PR opened with GITHUB_TOKEN would not run CI, so it could never be merged into main.
+      GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+    steps:
+      - name: Open a PR from release/v${{ inputs.version }} into main
+        run: |
+          # Through a copy of the branch, so merge conflicts can be fixed without touching the frozen one.
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/release/v$VERSION" --jq .object.sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/merge/v$VERSION" -f sha="$sha" --silent
+          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "merge/v$VERSION" \
+            --title "chore(release): merge v$VERSION back into main" \
+            --body "Brings the version bump, changelog and any hotfixes from \`release/v$VERSION\` into \`main\`. Squash-merge it before cutting the next release."

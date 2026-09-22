@@ -1,7 +1,8 @@
 # Plan 0005 — Release 0.2.0
 
 - Date: 2026-09-23
-- Status: preparing. Release PR #42 is open and green. Do not merge it until every gate below is checked.
+- Status: cutting `release/v0.2.0` and `v0.2.0-rc.1` for testing. First release through the flow in
+  DECISIONS 0021. Do not run **Finalize release** until every gate below is checked.
 
 ## What ships
 
@@ -27,7 +28,7 @@ The host permission shows existing users a new warning ("Read and change your da
 Chrome disables the extension for them until they accept it. The item is Unlisted, so few users are
 affected. New permissions usually mean a longer review.
 
-## Gates (all must be true before merging #42)
+## Gates (all must be true before Finalize)
 
 1. **v0.1.0 review is finished.** The store rejects an upload while a review is pending (plan 0004).
    If v0.1.0 was rejected, 0.2.0 replaces it: fix what the rejection named, then continue.
@@ -37,16 +38,16 @@ affected. New permissions usually mean a longer review.
    is public, so the policy URL can be `https://github.com/ParthSanepara/gitsync-chrome/blob/main/PRIVACY.md`
    (or GitHub Pages, #7). The store's privacy policy URL must point at it.
 4. **Dashboard Privacy tab is updated by hand.** The store API does not edit it. Paste the single purpose
-   and the five justifications from `listing.md`. Data usage: see the open question below.
+   and the five justifications from `listing.md`, and the data usage answers (Decided, below).
 5. **Screenshots show the real UI.** At least one 1280×800 of the setup screen and one of the preview.
-6. **Manual test passes** on `pnpm zip` output from `main` (checklist below).
+6. **Manual test passes** on the latest `v0.2.0-rc.N` pre-release zip (checklist below).
 7. **Publishing path chosen.** The `chrome-web-store` environment has no secrets, so the `publish` job
    will skip with a notice. Either finish #6 (service account, secrets, Store dry run) first, or upload
    the release zip by hand one more time. Manual is allowed until automation is live.
 
 ## Manual test checklist
 
-Load `.output/chrome-mv3` unpacked, in a fresh Chrome profile.
+Unzip the candidate's `gitsync-chrome-0.2.0-chrome.zip` and load it unpacked, in a fresh Chrome profile.
 
 - [ ] Toolbar icon is the dark logo; clicking it opens the side panel.
 - [ ] Sign in with GitHub: code shown, approval completes, account shown. Close and reopen Chrome: still
@@ -65,27 +66,28 @@ Load `.output/chrome-mv3` unpacked, in a fresh Chrome profile.
 
 ## Release steps
 
-1. Merge the prep PR (this plan, listing text, doc fixes).
-2. Check every gate above.
-3. Merge #42. release-please tags `v0.2.0` and creates the GitHub release. Then, in `release.yml`:
-   - `release-branch` creates `release/v0.2.0` at the tag (first real run of that job).
-   - `build` attaches `gitsync-chrome-0.2.0-chrome.zip` to the release.
-   - `publish` submits it, or skips with a notice (gate 7).
-4. Verify: the release has the zip; `release/v0.2.0` points at the `v0.2.0` commit; the zip's
-   `manifest.json` says `"version": "0.2.0"` with the permissions above.
-5. If `publish` skipped: dashboard → Package → upload the zip from the release → Submit for review.
-   Visibility stays **Unlisted**.
-6. After approval: install from the listing, rerun the first four checklist items, close the issues the
+1. Merge the prep PR (this plan, the new release workflows, listing text).
+2. Close release-please's PR #42 unmerged; the new flow computes the same changelog.
+3. **Cut release** `0.2.0`: creates `release/v0.2.0` from `main` with version 0.2.0 and the changelog,
+   and publishes pre-release `v0.2.0-rc.1` with the zip.
+4. Test the candidate with the checklist. For a failure: PR a fix into `release/v0.2.0`; that publishes
+   `v0.2.0-rc.2`; test again.
+5. When a candidate passes and every gate is checked: **Finalize release** `0.2.0`. It tags `v0.2.0` on
+   the candidate, publishes the same zip, runs `publish` (skips while store secrets are missing),
+   freezes `release/v0.2.0`, and opens the back-merge PR.
+6. If `publish` skipped: dashboard → Package → upload the zip from the `v0.2.0` release → Submit for
+   review. Visibility stays **Unlisted**.
+7. Squash-merge `chore(release): merge v0.2.0 back into main`.
+8. After approval: install from the listing, rerun the first four checklist items, close the issues the
    release covers.
 
 A rejected or broken 0.2.0 cannot be rolled back in the store. Fix forward: merge a `fix:` PR and release
 0.2.1.
 
-## Open questions
+## Decided
 
-- **Data usage answers.** 0.2.0 stores a GitHub token on the device and reads and writes repository
-  contents, all between the browser and GitHub, never to the developer. Decide whether to declare
-  "Authentication information" and "Website content" as handled data (safer for review) or keep "no data
-  collected". Update the Privacy practices section of `listing.md` to match.
-- **Rulesets.** The repo is public, so rulesets are available (DECISIONS 0020). Create them for `main` and
-  `release/*` (`docs/RELEASING.md` A.2) before `release/v0.2.0` exists, so it is protected from the start.
+- **Data usage:** declare Authentication information and Website content (`docs/store/listing.md`).
+- **Rulesets:** `main` is protected now. **Frozen releases** is created with `release/v0.1.0` in it;
+  Finalize adds `release/v0.2.0`. Open release branches stay writable for hotfixes (DECISIONS 0021).
+- **Release token:** `RELEASE_PLEASE_TOKEN` needs _Administration: write_ added before Finalize, or the
+  `freeze` job fails (`docs/RELEASING.md` A.1).

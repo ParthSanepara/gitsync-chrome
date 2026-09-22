@@ -1,7 +1,7 @@
 name: PR title
 
-# Squash merges make the PR title the commit message on main, which
-# release-please reads. So the title must be a conventional commit.
+# Squash merges make the PR title the commit message, which the release
+# changelog is built from (scripts/changelog.ts). So it must be a conventional commit.
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
